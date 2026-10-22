@@ -23,8 +23,8 @@ Prices, quotas and signup flows change, so check each provider's page as you sig
 2. Pick the **Free** plan. SerpApi's own pages list it as 250 searches/month in one place and 100 in another. Check what your dashboard shows.
 3. Copy your key from **https://serpapi.com/manage-api-key**.
 4. In `.env`: `SERPAPI_KEY=your_key_here`
-5. In the app: **Settings → SerpApi searches / month**: enter the number your dashboard shows. The worker spreads that across the month (60% for flights, the rest is kept for hotels).
-6. Test it on the server: `docker compose exec worker npm run worker:once`, then open **Keys** in the app. You should see a successful flight run.
+5. In the app: **Settings → SerpApi searches / month**: enter the number your dashboard shows. The worker spreads that across the month: 60% for flights, 40% for hotels.
+6. Test it on the server: `docker compose exec worker npm run worker:once`, then open **Keys** in the app. You should see a successful flight run and a successful hotel run.
 
 **How far the free tier goes:** each search covers all 6 Boston-area airports and every destination airport at once. With ~10 trips that need flights, the free tier refreshes each trip's base dates every few days, plus some ±1–2 day variants. The **$25/month** plan (1,000 searches) covers daily checks with variants. The savings meter (step 10) will tell you if it's worth it.
 

@@ -137,3 +137,9 @@ details[open] > summary { margin-bottom: 8px; }
 table.plain { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.plain th, table.plain td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .scroll-x { overflow-x: auto; }
+.alert.good { border-color: color-mix(in srgb, var(--good) 50%, transparent); }
+.options { list-style: none; padding: 0; margin: 8px 0 0; font-size: 14px; }
+.options li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.options li:last-child { border-bottom: 0; }
+fieldset { border: 1px dashed var(--border); border-radius: 10px; padding: 10px; margin: 0; }
+legend { font-size: 12px; color: var(--muted); padding: 0 4px; }

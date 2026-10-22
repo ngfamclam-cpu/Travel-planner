@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { setupChecklist } from "@rave-run/core";
 import { prisma } from "@rave-run/db";
-import { getSettings, listTrips, providerHealth, type TripView } from "@/lib/data";
+import { AlertList } from "@/components/AlertList";
+import { getSettings, listTrips, openAlerts, providerHealth, type TripView } from "@/lib/data";
 import { fmtRange, usd } from "@/lib/format";
 import { keyStatus } from "@/lib/keys";
 
@@ -33,11 +34,12 @@ function TripBar({ t, max }: { t: TripView; max: number }) {
 }
 
 export default async function Home() {
-  const [trips, settings, health, pointsSetting] = await Promise.all([
+  const [trips, settings, health, pointsSetting, alerts] = await Promise.all([
     listTrips(),
     getSettings(),
     providerHealth(),
     prisma.setting.findUnique({ where: { key: "pointsUpdatedAt" } }),
+    openAlerts(),
   ]);
   const active = trips.filter((t) => t.status !== "done");
   const committed = active.filter((t) => t.status === "planned" || t.status === "booked");
@@ -52,8 +54,10 @@ export default async function Home() {
   for (const h of health.filter((h) => !h.ok)) {
     actions.push({ text: `Couldn't check ${h.kind} prices: ${h.error?.split("\n")[0]}`, href: "/setup", tone: "bad" });
   }
-  if (!health.some((h) => h.kind === "flight")) {
-    actions.push({ text: "Flight prices haven't been checked in the last 48h.", href: "/setup", tone: "warn" });
+  for (const kind of ["flight", "hotel"]) {
+    if (!health.some((h) => h.kind === kind)) {
+      actions.push({ text: `${kind === "flight" ? "Flight" : "Hotel"} prices haven't been checked in the last 48h.`, href: "/setup", tone: "warn" });
+    }
   }
   for (const t of committed) {
     for (const c of t.clashes) actions.push({ text: `${t.name}: ${c.message}`, href: `/trips/${t.id}`, tone: c.kind === "overlap" ? "bad" : "warn" });
@@ -79,7 +83,8 @@ export default async function Home() {
       </section>
 
       <h2>Today</h2>
-      {actions.length === 0 && <p className="muted">Nothing needs action.</p>}
+      <AlertList alerts={alerts} />
+      {actions.length === 0 && alerts.length === 0 && <p className="muted">Nothing needs action.</p>}
       {actions.map((a, i) => (
         <Link key={i} href={a.href} className={`alert ${a.tone}`} style={{ display: "block", color: "inherit" }}>{a.text}</Link>
       ))}

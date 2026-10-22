@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { DEFAULT_SETTINGS, mergeSettings, type AppSettings } from "@rave-run/core";
+import { DEFAULT_SETTINGS, mergeSettings, nights, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec } from "@rave-run/core";
 import { createTripFromEvent, day, prisma, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
 import { SESSION_COOKIE, authConfigured, sessionToken, timingSafeEqual } from "@/lib/auth";
 
@@ -65,6 +65,28 @@ export async function updateLineItem(f: FormData) {
   const quoteChanged = quoted !== (li.quotedAmount == null ? null : Number(li.quotedAmount));
   const qty = Math.max(0, Math.round(Number(str(f, "qty") || li.qty)));
   const cardId = str(f, "cardId");
+  const booked = money(f, "bookedAmount");
+
+  // Hotels: search area + what was booked (for rebook alerts).
+  const hotelData: Prisma.LineItemUncheckedUpdateInput = {};
+  if (li.kind === "hotel") {
+    const query = str(f, "hotelQuery");
+    const spec: HotelSearchSpec = { ...((li.searchSpec ?? {}) as HotelSearchSpec), query: query || undefined };
+    hotelData.searchSpec = spec as Prisma.InputJsonValue;
+    if (booked != null) {
+      const optNum = (k: string) => (str(f, k) && Number.isFinite(Number(str(f, k))) ? Number(str(f, k)) : undefined);
+      const cancelBy = str(f, "cancelBy");
+      const booking: HotelBooking = {
+        hotelName: str(f, "bookedHotelName") || undefined,
+        stars: optNum("bookedStars"),
+        rating5: optNum("bookedRating5"),
+        refundable: f.get("bookedRefundable") === "on",
+        cancelBy: /^\d{4}-\d{2}-\d{2}$/.test(cancelBy) ? cancelBy : undefined,
+        confirmation: str(f, "confirmation") || undefined,
+      };
+      hotelData.booking = booking as Prisma.InputJsonValue;
+    }
+  }
 
   await prisma.lineItem.update({
     where: { id },
@@ -72,8 +94,9 @@ export async function updateLineItem(f: FormData) {
       label: str(f, "label") || li.label,
       estAmount: money(f, "estAmount"),
       quotedAmount: quoted,
-      bookedAmount: money(f, "bookedAmount"),
+      bookedAmount: booked,
       qty,
+      ...hotelData,
       notes: str(f, "notes") || null,
       cardId: cardId || null,
       // A hand-typed quote is labeled as such, with the time it was entered.
@@ -85,7 +108,7 @@ export async function updateLineItem(f: FormData) {
             insightLabel: null,
           }
         : {}),
-      isEstimate: quoted == null && money(f, "bookedAmount") == null,
+      isEstimate: quoted == null && booked == null,
     },
   });
   refresh(li.tripId);
@@ -128,6 +151,13 @@ export async function updateTrip(f: FormData) {
   const arrive = isoDate(f, "arrive");
   const depart = isoDate(f, "depart");
   if (depart <= arrive) throw new Error("Depart must be after arrive");
+  const before = await prisma.trip.findUniqueOrThrow({ where: { id } });
+  const oldNights = nights({ arrive: toISODate(before.arriveDate), depart: toISODate(before.departDate) });
+  const newNights = nights({ arrive, depart });
+  // Hotel stays that covered the whole trip keep covering it.
+  if (oldNights !== newNights) {
+    await prisma.lineItem.updateMany({ where: { tripId: id, kind: "hotel", qty: oldNights }, data: { qty: newNights } });
+  }
   await prisma.trip.update({
     where: { id },
     data: {
@@ -285,4 +315,9 @@ export async function savePoints(f: FormData) {
   });
   revalidatePath("/settings");
   revalidatePath("/");
+}
+
+export async function dismissAlert(f: FormData) {
+  const a = await prisma.alert.update({ where: { id: str(f, "id") }, data: { dismissedAt: new Date() } });
+  refresh(a.tripId ?? undefined);
 }

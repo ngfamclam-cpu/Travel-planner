@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { googleFlightsUrl, searchOrigins, surgeSentence } from "@rave-run/core";
+import { googleFlightsUrl, googleHotelsUrl, searchOrigins, surgeSentence } from "@rave-run/core";
 import { addLineItem, deleteLineItem, deleteTrip, updateLineItem, updateTrip } from "@/app/actions";
+import { AlertList } from "@/components/AlertList";
 import { InsightChip, PriceTag, Provenance } from "@/components/PriceTag";
 import { Sparkline } from "@/components/Sparkline";
-import { getCards, getSettings, getTrip, type LineItemView, type TripView } from "@/lib/data";
+import { getCards, getSettings, getTrip, openAlerts, type LineItemView, type TripView } from "@/lib/data";
 import { fmtDay, fmtRange, fmtWhen, usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +17,52 @@ function deepLink(t: TripView, li: LineItemView, origins: string[]): { href: str
       text: "Search Google Flights",
     };
   }
-  if (li.kind === "hotel") {
-    const where = t.event?.venue && t.event.venue !== "TBA" ? `${t.event.venue}, ${t.event.city}` : t.event?.city ?? t.name;
-    return { href: `https://www.google.com/travel/search?q=${encodeURIComponent(`hotels near ${where} ${t.arrive} to ${t.depart}`)}`, text: "Search Google Hotels" };
+  if (li.kind === "hotel" && li.hotel?.location) {
+    return { href: googleHotelsUrl(li.hotel.location, t.arrive, t.depart), text: "Search Google Hotels" };
   }
   if (li.kind === "ticket" && (t.event?.ticketUrl || t.event?.officialUrl)) {
     return { href: (t.event.ticketUrl ?? t.event.officialUrl)!, text: "Official tickets" };
   }
   return null;
+}
+
+function HotelDetails({ li }: { li: LineItemView }) {
+  const h = li.hotel!;
+  const b = h.booking;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <small>
+        Searching: {h.location ?? <span style={{ color: "var(--bad)" }}>no area set (edit to add one)</span>} · free-cancellation rates only
+      </small>
+      {li.bookedAmount != null ? (
+        <div>
+          <small>
+            Booked{b?.hotelName ? `: ${b.hotelName}` : ""}
+            {b?.refundable
+              ? ` · refundable${b.cancelBy ? ` until ${b.cancelBy}` : ""}, so it's re-checked daily for a cheaper same-or-better rate`
+              : " · non-refundable, not re-checked"}
+          </small>
+        </div>
+      ) : (
+        <div><small>Tip: book a refundable rate early. It's re-checked daily and you'll get a rebook alert if it drops.</small></div>
+      )}
+      {h.options.length > 0 && (
+        <ul className="options">
+          {h.options.map((o, i) => (
+            <li key={i}>
+              <span>
+                {o.url ? <a href={o.url} target="_blank" rel="noreferrer">{o.name}</a> : o.name}{" "}
+                <small>
+                  {o.stars ? `${o.stars}★` : ""} {o.rating5 ? `· ${o.rating5}/5` : ""} {o.refundable ? "· free cancel" : ""}
+                </small>
+              </span>
+              <span className="num">{usd(o.perNight)}/n · {usd(o.total)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function LineItem({ t, li, cards, origins }: { t: TripView; li: LineItemView; cards: { id: string; name: string }[]; origins: string[] }) {
@@ -49,13 +88,19 @@ function LineItem({ t, li, cards, origins }: { t: TripView; li: LineItemView; ca
       </div>
       <div style={{ marginTop: 6 }}><Provenance li={li} /></div>
       {li.notes && <div><small>{li.notes}</small></div>}
+      {li.hotel && <HotelDetails li={li} />}
       {(li.kind === "flight" || li.spark.length > 0) && (
         <div className="row" style={{ marginTop: 6 }}>
           <Sparkline points={li.spark} />
           {li.latestSnapshot && (
             <small>
-              Last check {fmtWhen(li.latestSnapshot.fetchedAt)}: {li.latestSnapshot.origin}, {li.latestSnapshot.carrier},{" "}
-              {li.latestSnapshot.stops === 0 ? "nonstop" : `${li.latestSnapshot.stops} stop`} ({li.latestSnapshot.variant})
+              Last check {fmtWhen(li.latestSnapshot.fetchedAt)}
+              {li.kind === "flight" && (
+                <>
+                  : {li.latestSnapshot.origin}, {li.latestSnapshot.carrier},{" "}
+                  {li.latestSnapshot.stops === 0 ? "nonstop" : `${li.latestSnapshot.stops} stop`} ({li.latestSnapshot.variant})
+                </>
+              )}
             </small>
           )}
         </div>
@@ -82,6 +127,25 @@ function LineItem({ t, li, cards, origins }: { t: TripView; li: LineItemView; ca
               {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          {li.hotel && (
+            <>
+              <div className="wide">
+                <label>Hotel search area</label>
+                <input name="hotelQuery" defaultValue={li.hotel.customLocation ?? ""} placeholder={li.hotel.location ?? "e.g. hotels in Brickell, Miami"} />
+              </div>
+              <fieldset className="wide">
+                <legend>If booked: what you booked (used for rebook alerts)</legend>
+                <div className="fields">
+                  <div className="wide"><label>Hotel name</label><input name="bookedHotelName" defaultValue={li.hotel.booking?.hotelName ?? ""} /></div>
+                  <div><label>Stars</label><input name="bookedStars" inputMode="decimal" defaultValue={li.hotel.booking?.stars ?? ""} /></div>
+                  <div><label>Rating (/5)</label><input name="bookedRating5" inputMode="decimal" defaultValue={li.hotel.booking?.rating5 ?? ""} /></div>
+                  <div><label>Free cancel until</label><input name="cancelBy" type="date" defaultValue={li.hotel.booking?.cancelBy ?? ""} /></div>
+                  <div><label>Confirmation #</label><input name="confirmation" defaultValue={li.hotel.booking?.confirmation ?? ""} /></div>
+                  <div className="wide"><label><input type="checkbox" name="bookedRefundable" defaultChecked={li.hotel.booking?.refundable ?? true} /> Refundable (keep checking for cheaper rates)</label></div>
+                </div>
+              </fieldset>
+            </>
+          )}
           <div className="wide"><label>Notes</label><textarea name="notes" defaultValue={li.notes ?? ""} /></div>
           <div className="row wide"><button type="submit">Save</button></div>
         </form>
@@ -96,7 +160,7 @@ function LineItem({ t, li, cards, origins }: { t: TripView; li: LineItemView; ca
 
 export default async function TripPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, cards, settings] = await Promise.all([getTrip(id), getCards(), getSettings()]);
+  const [t, cards, settings, alerts] = await Promise.all([getTrip(id), getCards(), getSettings(), openAlerts(id)]);
   if (!t) notFound();
   const origins = searchOrigins(settings);
 
@@ -130,6 +194,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         {t.notes && <p className="muted" style={{ marginBottom: 0 }}>{t.notes}</p>}
       </section>
 
+      <AlertList alerts={alerts} />
       {t.clashes.map((c) => (
         <div key={c.otherId} className={`alert ${c.kind === "overlap" ? "bad" : "warn"}`}>
           ⚠ {c.message}. <Link href={`/trips/${c.otherId}`}>Open {c.otherName}</Link>

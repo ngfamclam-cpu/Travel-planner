@@ -1,9 +1,8 @@
 // Google Flights via SerpApi (engine=google_flights). Free tier: verify the monthly quota on
 // https://serpapi.com/pricing (their pages list 100–250/month); only successful searches count.
 import { flightQueryKey, type FlightOffer, type FlightQuery } from "@rave-run/core";
+import { serpApiGet } from "../serpapi-http";
 import { SIX_HOURS_MS, type FlightProvider, type ProviderResult, type QueryCacheStore } from "../types";
-
-const ENDPOINT = "https://serpapi.com/search.json";
 
 export interface SerpApiOptions {
   apiKey?: string;
@@ -160,12 +159,7 @@ export class SerpApiFlightProvider implements FlightProvider {
     return (this.opts.combineAirports ?? true) ? 1 : q.origins.length * q.destinations.length;
   }
 
-  private async fetchOne(q: FlightQuery, origins: string[], destinations: string[]): Promise<SerpFlightsResponse> {
-    const f = this.opts.fetchImpl ?? fetch;
-    const url = `${ENDPOINT}?${serpApiParams(q, this.opts.apiKey!, origins, destinations)}`;
-    const res = await f(url, { signal: AbortSignal.timeout(this.opts.timeoutMs ?? 45_000) });
-    const json = (await res.json().catch(() => ({}))) as SerpFlightsResponse;
-    if (!res.ok || json.error) throw new Error(json.error ?? `HTTP ${res.status}`);
-    return json;
+  private fetchOne(q: FlightQuery, origins: string[], destinations: string[]): Promise<SerpFlightsResponse> {
+    return serpApiGet<SerpFlightsResponse>(serpApiParams(q, this.opts.apiKey!, origins, destinations), this.opts);
   }
 }

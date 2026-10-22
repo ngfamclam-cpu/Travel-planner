@@ -1,6 +1,8 @@
 // Server-side data access. Converts Prisma Decimals/Dates into plain values for rendering.
 import {
+  addDays,
   computeSurge,
+  defaultHotelLocation,
   destinationFromAirports,
   findClashes,
   isStale,
@@ -12,6 +14,8 @@ import {
   type AppSettings,
   type Clash,
   type FlightSearchSpec,
+  type HotelBooking,
+  type HotelSearchSpec,
   type SeasonalTrap,
   type Surge,
   type TripLike,
@@ -31,7 +35,7 @@ const tripInclude = {
     orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
     include: {
       card: true,
-      snapshots: { where: { isBaseline: false }, orderBy: { fetchedAt: "asc" as const }, take: 400 },
+      snapshots: { where: { isBaseline: false }, orderBy: { fetchedAt: "asc" as const }, take: 600 },
     },
   },
 } satisfies Prisma.TripInclude;
@@ -41,6 +45,16 @@ type TripRow = Prisma.TripGetPayload<{ include: typeof tripInclude }>;
 export interface SparkPoint {
   date: string;
   price: number;
+}
+
+export interface HotelOption {
+  name: string;
+  total: number;
+  perNight: number;
+  stars: number | null;
+  rating5: number | null;
+  refundable: boolean | null;
+  url: string | null;
 }
 
 export interface LineItemView {
@@ -61,6 +75,7 @@ export interface LineItemView {
   notes: string | null;
   cardName: string | null;
   searchSpec: FlightSearchSpec | null;
+  hotel: { location: string | null; customLocation: string | null; booking: HotelBooking | null; options: HotelOption[] } | null;
   spark: SparkPoint[];
   latestSnapshot: { origin: string | null; carrier: string | null; stops: number | null; variant: string | null; fetchedAt: Date } | null;
 }
@@ -94,12 +109,27 @@ function sparkline(snaps: TripRow["lineItems"][number]["snapshots"]): SparkPoint
   return [...byDay.entries()].map(([date, price]) => ({ date, price }));
 }
 
+type SnapRow = TripRow["lineItems"][number]["snapshots"][number];
+
+/** Snapshots priced for this trip's current dates (exact nights for hotels, ±flex for flights). */
+function matchesDates(s: SnapRow, kind: string, arrive: string, depart: string, flex: number): boolean {
+  if (!s.outboundDate || !s.returnDate) return true;
+  const o = toISODate(s.outboundDate);
+  const r = toISODate(s.returnDate);
+  if (kind === "hotel") return o === arrive && r === depart;
+  return o >= addDays(arrive, -flex) && o <= addDays(arrive, flex) && r >= addDays(depart, -flex) && r <= addDays(depart, flex);
+}
+
 function toView(t: TripRow, all: TripLike[]): TripView {
   const arrive = toISODate(t.arriveDate);
   const depart = toISODate(t.departDate);
   const items: LineItemView[] = t.lineItems.map((li) => {
     const quoted = num(li.quotedAmount);
-    const latest = li.snapshots.at(-1);
+    const snaps = li.snapshots.filter((s) => matchesDates(s, li.kind, arrive, depart, t.flexDays));
+    const latest = snaps.at(-1);
+    const hotelSpec = li.kind === "hotel" ? ((li.searchSpec ?? {}) as HotelSearchSpec) : null;
+    // Options from the most recent hotel fetch, cheapest first.
+    const batch = latest && li.kind === "hotel" ? snaps.filter((s) => s.fetchedAt.getTime() === latest.fetchedAt.getTime()) : [];
     return {
       id: li.id,
       kind: li.kind,
@@ -118,8 +148,26 @@ function toView(t: TripRow, all: TripLike[]): TripView {
       surge: computeSurge(quoted, num(li.baselinePrice)),
       notes: li.notes,
       cardName: li.card?.name ?? null,
-      searchSpec: li.searchSpec as FlightSearchSpec | null,
-      spark: sparkline(li.snapshots),
+      searchSpec: li.kind === "flight" ? (li.searchSpec as FlightSearchSpec | null) : null,
+      hotel: hotelSpec
+        ? {
+            location: hotelSpec.query || defaultHotelLocation(t.event),
+            customLocation: hotelSpec.query ?? null,
+            booking: (li.booking as HotelBooking | null) ?? null,
+            options: batch
+              .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+              .map((s) => ({
+                name: s.hotelName ?? "hotel",
+                total: Number(s.totalPrice),
+                perNight: Number(s.price),
+                stars: s.stars,
+                rating5: s.rating,
+                refundable: s.refundable,
+                url: s.bookingUrl,
+              })),
+          }
+        : null,
+      spark: sparkline(snaps),
       latestSnapshot: latest
         ? { origin: latest.origin, carrier: latest.carrier, stops: latest.stops, variant: latest.variant, fetchedAt: latest.fetchedAt }
         : null,
@@ -191,4 +239,12 @@ export async function getCards() {
 
 export async function getPoints() {
   return prisma.pointsBalance.findMany({ orderBy: { currency: "asc" } });
+}
+
+export async function openAlerts(tripId?: string) {
+  return prisma.alert.findMany({
+    where: { dismissedAt: null, ...(tripId ? { tripId } : {}) },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
 }

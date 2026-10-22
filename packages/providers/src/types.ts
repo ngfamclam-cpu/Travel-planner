@@ -1,6 +1,6 @@
 // Common provider contracts (spec §5). Every provider fails soft: it returns ok:false with a
 // reason instead of throwing, so the worker and brief can say "couldn't check X today".
-import type { FlightOffer, FlightQuery } from "@rave-run/core";
+import type { FlightOffer, FlightQuery, HotelOffer, HotelQuery } from "@rave-run/core";
 
 export type ProviderResult<T> =
   | { ok: true; provider: string; offers: T[]; raw: unknown; fetchedAt: Date; cached: boolean; searchUrl?: string }
@@ -19,26 +19,7 @@ export interface FlightProvider {
   search(q: FlightQuery): Promise<ProviderResult<FlightOffer>>;
 }
 
-// The interfaces below are implemented in later build steps (hotels: step 4, events: step 5, awards: step 10).
-export interface HotelQuery {
-  location: string;
-  checkIn: string;
-  checkOut: string;
-  adults: number;
-  minStars: number;
-  minRating10: number;
-  near?: { lat: number; lng: number };
-}
-export interface HotelOffer {
-  provider: string;
-  name: string;
-  pricePerNight: number;
-  total: number;
-  stars?: number;
-  rating10?: number;
-  refundable?: boolean;
-  bookingUrl?: string;
-}
+// Event and award interfaces are implemented in later build steps (events: step 5, awards: step 10).
 export interface HotelProvider {
   info: ProviderInfo;
   search(q: HotelQuery): Promise<ProviderResult<HotelOffer>>;

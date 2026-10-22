@@ -1,6 +1,8 @@
 import { SerpApiFlightProvider } from "./flights/serpapi";
 import { UnconfiguredFlightProvider } from "./flights/unconfigured";
-import type { FlightProvider, QueryCacheStore } from "./types";
+import { SerpApiHotelProvider } from "./hotels/serpapi";
+import { UnconfiguredHotelProvider } from "./hotels/unconfigured";
+import type { FlightProvider, HotelProvider, QueryCacheStore } from "./types";
 
 export interface ProviderEnv {
   SERPAPI_KEY?: string;
@@ -16,6 +18,10 @@ export function flightProvider(env: ProviderEnv, cache?: QueryCacheStore): Fligh
     });
   }
   return new UnconfiguredFlightProvider();
+}
+
+export function hotelProvider(env: ProviderEnv, cache?: QueryCacheStore): HotelProvider {
+  return env.SERPAPI_KEY ? new SerpApiHotelProvider({ apiKey: env.SERPAPI_KEY, cache }) : new UnconfiguredHotelProvider();
 }
 
 /** Every key the app knows about, for the setup page. */

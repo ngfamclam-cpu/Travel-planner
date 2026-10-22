@@ -1,0 +1,28 @@
+{
+  "search_metadata": { "status": "Success", "google_hotels_url": "https://www.google.com/travel/search?q=FIXTURE" },
+  "properties": [
+    {
+      "type": "hotel",
+      "name": "Brickell Test Hotel",
+      "link": "https://example.com/brickell",
+      "property_token": "tok1",
+      "gps_coordinates": { "latitude": 25.765, "longitude": -80.193 },
+      "rate_per_night": { "lowest": "$389", "extracted_lowest": 389 },
+      "total_rate": { "lowest": "$1,556", "extracted_lowest": 1556 },
+      "hotel_class": "4-star hotel",
+      "extracted_hotel_class": 4,
+      "overall_rating": 4.4,
+      "reviews": 2310
+    },
+    {
+      "type": "hotel",
+      "name": "String Price Inn",
+      "rate_per_night": { "lowest": "$1,020" },
+      "hotel_class": "3-star hotel",
+      "overall_rating": 4.1,
+      "free_cancellation": false
+    },
+    { "type": "vacation rental", "name": "Condo", "rate_per_night": { "extracted_lowest": 150 } },
+    { "type": "hotel", "name": "No price hotel" }
+  ]
+}

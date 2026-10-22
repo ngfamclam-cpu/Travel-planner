@@ -127,6 +127,8 @@ model LineItem {
   // Surge = event-window price ÷ baseline price for a normal week (spec §3).
   baselinePrice Decimal?        @map("baseline_price") @db.Decimal(10, 2)
   baselineAt    DateTime?       @map("baseline_at")
+  // Hotels: what was booked ({ hotelName, stars, rating5, refundable, cancelBy, confirmation }), for rebook alerts.
+  booking       Json?
   notes         String?
   sortOrder     Int             @default(0) @map("sort_order")
   cardId        String?         @map("card_id")
@@ -136,6 +138,7 @@ model LineItem {
   snapshots     PriceSnapshot[]
   redemptions   Redemption[]
   savings       SavingsMeter[]
+  alerts        Alert[]
 
   @@index([tripId])
   @@map("line_items")
@@ -164,6 +167,8 @@ model PriceSnapshot {
   stars           Float?
   rating          Float?
   insightLabel    String?  @map("insight_label")
+  refundable      Boolean?
+  rank            Int? // position within one fetch (hotels keep the top few options)
   bookingUrl      String?  @map("booking_url")
   fetchedAt       DateTime @default(now()) @map("fetched_at")
   raw             Json?
@@ -277,4 +282,23 @@ model QueryCache {
   fetchedAt DateTime @default(now()) @map("fetched_at")
 
   @@map("query_cache")
+}
+
+// Things the user should act on: rebook alerts now, buy signals and tier deadlines later.
+model Alert {
+  id          String    @id @default(cuid())
+  lineItemId  String?   @map("line_item_id")
+  lineItem    LineItem? @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  tripId      String?   @map("trip_id")
+  kind        String // rebook | buy_now | deadline ...
+  title       String
+  body        String
+  amount      Decimal?  @db.Decimal(10, 2) // savings, when relevant
+  url         String?
+  dedupeKey   String    @unique @map("dedupe_key")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  dismissedAt DateTime? @map("dismissed_at")
+
+  @@index([dismissedAt, createdAt])
+  @@map("alerts")
 }

@@ -16,6 +16,7 @@ import {
 import type { Prisma, PrismaClient } from "@rave-run/db";
 import type { FlightProvider } from "@rave-run/providers";
 import { loadSettings } from "../settings";
+import { refreshLineItemQuote } from "./quotes";
 
 export interface FlightJobOptions {
   now?: Date;
@@ -169,34 +170,4 @@ export async function runFlightJob(prisma: PrismaClient, provider: FlightProvide
   });
   log(`Flights: ${snapshots} snapshots, ${failures.length} failures, ${quotaSpent} searches spent`);
   return { ok: failures.length === 0, planned: plan.length, searched, snapshots, failures };
-}
-
-/**
- * Set the line item's quote to the cheapest event-window variant seen in the last 48h
- * (never older, spec §14), and its baseline to the latest baseline snapshot.
- */
-export async function refreshLineItemQuote(prisma: PrismaClient, lineItemId: string, now = new Date()) {
-  const since = new Date(now.getTime() - 48 * 3_600_000);
-  const best = await prisma.priceSnapshot.findFirst({
-    where: { lineItemId, isBaseline: false, fetchedAt: { gte: since } },
-    orderBy: [{ totalPrice: "asc" }, { fetchedAt: "desc" }],
-  });
-  const baseline = await prisma.priceSnapshot.findFirst({
-    where: { lineItemId, isBaseline: true },
-    orderBy: { fetchedAt: "desc" },
-  });
-  const data: Prisma.LineItemUpdateInput = {};
-  if (best) {
-    const via = Number(best.positioningCost) > 0 ? ` from ${best.origin} incl. $${Number(best.positioningCost)} positioning` : ` from ${best.origin}`;
-    Object.assign(data, {
-      quotedAmount: best.totalPrice,
-      quotedAt: best.fetchedAt,
-      quotedSource: `Google Flights via SerpApi (${best.variant}${via}, ${best.carrier}, ${best.stops === 0 ? "nonstop" : `${best.stops} stop`})`,
-      quotedUrl: best.bookingUrl,
-      insightLabel: best.insightLabel,
-      isEstimate: false,
-    });
-  }
-  if (baseline) Object.assign(data, { baselinePrice: baseline.totalPrice, baselineAt: baseline.fetchedAt });
-  if (Object.keys(data).length) await prisma.lineItem.update({ where: { id: lineItemId }, data });
 }

@@ -33,6 +33,7 @@ async function tiers(eventName: string, start: string, rows: Omit<Prisma.TicketT
 async function reset() {
   // Order matters for FKs.
   await prisma.$transaction([
+    prisma.alert.deleteMany(),
     prisma.savingsMeter.deleteMany(),
     prisma.redemption.deleteMany(),
     prisma.priceSnapshot.deleteMany(),
@@ -217,7 +218,7 @@ async function seedTrips() {
             quotedAt: ticket.quoted != null ? AS_OF : null,
             notes: ticket.notes,
           },
-          { kind: "hotel" as const, label: "Hotel near venue", qty: 0, notes: "Nights set by trip window; priced in step 4." },
+          { kind: "hotel" as const, label: "Hotel near venue", qty: 0, notes: "Nights follow the trip window." },
           { kind: "ground" as const, label: "Airport/venue transport" },
         ],
       },
@@ -303,7 +304,7 @@ async function seedTrips() {
           notes: "Nonstop, Mar 25–29. Google: prices are currently high.",
         },
         { kind: "ticket", label: "GA (resale)", quotedAmount: 517, quotedSource: "Vivid Seats resale, Sept 2026", notes: "Official early tiers sold out; waitlist on Front Gate. Signal: WATCH." },
-        { kind: "hotel", label: "Hotel Downtown/Brickell", estAmount: 350, qty: 4, notes: "Miami Music Week + spring break estimate. Window Mar 25–29 = 4 nights (spec estimated 3)." },
+        { kind: "hotel", label: "Hotel Downtown/Brickell", estAmount: 350, qty: 4, searchSpec: { query: "hotels in Downtown Miami and Brickell" }, notes: "Miami Music Week + spring break estimate. Window Mar 25–29 = 4 nights (spec estimated 3)." },
         { kind: "ground", label: "Airport ↔ hotel ↔ Bayfront Park" },
       ],
     },
@@ -336,7 +337,7 @@ async function seedTrips() {
       items: [
         { kind: "flight", label: "Flight BOS area → LAS", quotedAmount: 405, quotedSource: GF, quotedAt: AS_OF, insightLabel: "typical", searchSpec: { destinations: ["LAS"] }, notes: "Nonstop May 13–17 ($403 1-stop). Google: typical." },
         { kind: "ticket", label: "One-weekend GA (Dusk)", quotedAmount: 399.99, quotedSource: "EDC official", quotedAt: AS_OF, notes: "All-in. $5 deposit payment plan." },
-        { kind: "hotel", label: "Hotel, Las Vegas", estAmount: 210, qty: 4 },
+        { kind: "hotel", label: "Hotel, Las Vegas Strip", estAmount: 210, qty: 4, searchSpec: { query: "hotels on the Las Vegas Strip" }, notes: "EDC shuttles leave from the Strip, so stay there rather than near the speedway." },
         { kind: "ground", label: "EDC shuttle pass", estAmount: 140 },
       ],
     },
@@ -372,7 +373,7 @@ async function seedTrips() {
     notes: "Cherry blossom season. Only 1 day home after Ultra.",
     items: [
       { kind: "flight", label: "Flight BOS area → Tokyo (HND/NRT)", quotedAmount: 1429, quotedSource: GF, quotedAt: AS_OF, insightLabel: "typical", searchSpec: { destinations: ["HND", "NRT"] }, notes: "1-stop. Google: typical." },
-      { kind: "hotel", label: "Hotel, Tokyo", estAmount: 150, qty: 12, notes: "Will rise for cherry blossom." },
+      { kind: "hotel", label: "Hotel, Tokyo", estAmount: 150, qty: 12, searchSpec: { query: "hotels in Shinjuku, Tokyo" }, notes: "Will rise for cherry blossom." },
       { kind: "ticket", label: "GMO Sonic ticket", notes: "Price TBA." },
       { kind: "ground", label: "Airport ↔ city + transit" },
     ],
@@ -389,7 +390,7 @@ async function seedTrips() {
       lineItems: {
         create: [
           { kind: "flight", label: "Flight BOS area → Tokyo (HND/NRT)", searchSpec: { destinations: ["HND", "NRT"] }, notes: "Not priced yet: the first worker run fetches it.", sortOrder: 0 },
-          { kind: "hotel", label: "Hotel, Tokyo", estAmount: 150, qty: 12, notes: "Estimate carried from Option B.", sortOrder: 1 },
+          { kind: "hotel", label: "Hotel, Tokyo", estAmount: 150, qty: 12, searchSpec: { query: "hotels in Shinjuku, Tokyo" }, notes: "Estimate carried from Option B.", sortOrder: 1 },
           { kind: "ground", label: "Airport ↔ city + transit", sortOrder: 2 },
         ],
       },

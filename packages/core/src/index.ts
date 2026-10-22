@@ -7,3 +7,4 @@ export * from "./totals";
 export * from "./freshness";
 export * from "./settings";
 export * from "./flights";
+export * from "./hotels";

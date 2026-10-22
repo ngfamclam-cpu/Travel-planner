@@ -13,8 +13,8 @@ Following the build order in the spec:
 | 1 | Repo, Docker Compose, Postgres, Prisma schema, seed data | ✅ |
 | 2 | Trips + line items UI, editable estimates, totals, compare view | ✅ |
 | 3 | Flight provider, daily snapshots, event-window dates, ±flex variants, surge baseline, sparklines | ✅ (needs `SERPAPI_KEY` for live prices) |
-| 4 | Hotels + surge + rebook alerts | next |
-| 5 | Ticketmaster / Edmtrain / SeatGeek + discovery | |
+| 4 | Hotels for the exact nights, refundable-only, quality floors, surge, rebook alerts | ✅ (same `SERPAPI_KEY`) |
+| 5 | Ticketmaster / Edmtrain / SeatGeek + discovery | next |
 | 6 | Buy-signal engine | |
 | 7 | Points & card engine | |
 | 8 | Daily brief (push + email) | |
@@ -26,6 +26,8 @@ Following the build order in the spec:
 - **Event window:** a trip built from an event arrives the day before it starts and leaves the day after it ends. The worker also searches ±1–2 day variants (never ones that miss part of the event) and keeps the cheapest.
 - **All six airports at once:** BOS, PVD, MHT, JFK, EWR, LGA. Each airport's positioning cost (e.g. ~$60 to get to NYC) is added before comparing, so a cheaper JFK fare only wins if it's still cheaper after getting there.
 - **Surge:** once a week the worker prices the same trip on a normal week (3 weeks away, skipping holidays and peak seasons) and shows "Flights are 1.4× normal for these dates".
+- **Hotels:** priced for the trip's exact nights, free-cancellation rates only, 3★+ and rated 4.0/5+ (both editable in Settings). The trip page shows the top 3 options. Each hotel line item has an editable search area. The defaults are "near the venue", except EDC (the Strip, where the shuttles leave from) and Tokyo (Shinjuku).
+- **Rebook alerts:** when you mark a hotel as booked, enter the hotel name, stars, rating, and the free-cancellation deadline. Every morning the worker looks for a cheaper free-cancellation rate at the same or a better hotel, with savings of at least $20 or 5%. You get one alert per stay, and it's replaced only when a bigger saving shows up.
 - **Seasonal traps** are flagged automatically: NYE week, Thanksgiving, US holiday weekends, Florida spring break, cherry blossom, Golden Week, Songkran, Lunar New Year.
 - **Provenance:** every price shows **booked / quoted / estimate / not priced**, its source and when it was fetched. Quotes older than 48h are marked **stale**. If a source fails, the app says "couldn't check" and never reuses old numbers quietly.
 - **Quota:** the free SerpApi tier is small, so the worker spreads it over the month: base dates first, then flex variants and baselines, with the most urgent and stalest trips first. Identical searches are cached for 6 hours.
@@ -47,7 +49,7 @@ Needs Node 22 and Postgres 16.
 cp .env.example .env                       # fill DATABASE_URL for local dev, e.g.
 echo 'DATABASE_URL="postgresql://raverun:raverun@localhost:5432/raverun"' > packages/db/.env
 npm install
-npm run db:deploy && npm run db:seed       # db:seed -- --reset to start over
+npm run db:deploy && npm run db:seed       # npm run db:reset wipes data and reseeds
 npm run dev                                # http://localhost:3000 (no password in dev unless APP_PASSWORD is set)
 npm run worker:once                        # one flight run now (needs SERPAPI_KEY)
 npm test                                   # unit tests; set TEST_DATABASE_URL to also run DB integration tests
@@ -62,7 +64,7 @@ npm test                                   # unit tests; set TEST_DATABASE_URL t
    cp .env.example .env && nano .env      # DOMAIN, POSTGRES_PASSWORD, APP_PASSWORD, SESSION_SECRET, SERPAPI_KEY
    docker compose up -d --build
    ```
-3. Open `https://your-domain`. Caddy gets the HTTPS certificate automatically. The worker applies migrations and seeds on first start, then checks flights daily at 5:10 AM ET.
+3. Open `https://your-domain`. Caddy gets the HTTPS certificate automatically. The worker applies migrations and seeds on first start, then checks flights daily at 5:10 AM ET and hotels at 5:40 AM ET.
 4. On Android: Chrome → menu → **Install app**.
 
 Logs: `docker compose logs -f worker`. Manual flight run: `docker compose exec worker npm run worker:once`.
@@ -71,7 +73,7 @@ Logs: `docker compose logs -f worker`. Manual flight run: `docker compose exec w
 
 ```
 apps/web          Next.js App Router PWA (UI, server actions, single-password auth)
-apps/worker       node-cron jobs (flights now; hotels, events, brief later)
+apps/worker       node-cron jobs (flights, hotels + rebook alerts; events and brief later)
 packages/core     pure logic: date windows, variants, surge, seasonal traps, clashes, totals, query planner
 packages/providers one adapter per source behind a common interface; fail soft, never invent prices
 packages/db       Prisma schema, migrations, seed, createTripFromEvent
