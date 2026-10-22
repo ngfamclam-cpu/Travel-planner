@@ -6,6 +6,7 @@ import { pgQueryCache } from "./cache";
 import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
 import { runTicketJob } from "./jobs/tickets";
+import { runPrune } from "./jobs/prune";
 
 const TZ = "America/New_York";
 // Flights run early so the 7:00 brief (step 8) has fresh numbers; searches are paced inside the job.
@@ -51,6 +52,14 @@ async function tickets() {
   }
 }
 
+async function prune() {
+  try {
+    console.log("Prune:", await runPrune(prisma));
+  } catch (e) {
+    console.error("Prune crashed:", e);
+  }
+}
+
 async function main() {
   if (process.argv.includes("--once")) {
     await flights();
@@ -63,6 +72,7 @@ async function main() {
   cron.schedule(FLIGHT_SCHEDULE, flights, { timezone: TZ });
   cron.schedule(HOTEL_SCHEDULE, hotels, { timezone: TZ });
   cron.schedule(TICKET_SCHEDULE, tickets, { timezone: TZ });
+  cron.schedule("30 3 * * *", prune, { timezone: TZ });
 }
 
 main().catch(async (e) => {

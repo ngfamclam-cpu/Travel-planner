@@ -1,8 +1,16 @@
-# Rave Run on a single droplet: postgres + web + worker + caddy (automatic HTTPS).
+# Rave Run on a single droplet: postgres + web + worker (+ caddy for automatic HTTPS).
+# Easiest: run scripts/setup-droplet.sh, which writes .env and picks the right options.
+#   With Caddy (ports 80/443 free):   docker compose --profile caddy up -d --build
+#   Behind your own nginx/Caddy:      docker compose up -d --build   → app on 127.0.0.1:3000
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" } # keep logs from filling the disk
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: raverun
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -17,25 +25,33 @@ services:
   worker:
     build: { context: ., target: worker }
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     environment:
       DATABASE_URL: postgresql://raverun:${POSTGRES_PASSWORD}@postgres:5432/raverun
       TZ: America/New_York
+      NODE_OPTIONS: --max-old-space-size=384
     depends_on:
       postgres: { condition: service_healthy }
 
   web:
     build: { context: ., target: web }
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     environment:
       DATABASE_URL: postgresql://raverun:${POSTGRES_PASSWORD}@postgres:5432/raverun
+      NODE_OPTIONS: --max-old-space-size=384
+    ports:
+      - "127.0.0.1:3000:3000" # local only; Caddy (or your own proxy) serves it publicly
     depends_on:
       postgres: { condition: service_healthy }
 
   caddy:
     image: caddy:2-alpine
+    profiles: ["caddy"]
     restart: unless-stopped
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"

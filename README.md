@@ -72,17 +72,15 @@ npm test                                   # unit tests; set TEST_DATABASE_URL t
 
 ## Deploy (DigitalOcean droplet)
 
-1. Point a domain (or subdomain) at the droplet: **Networking → Domains → A record → droplet IP**.
-2. On the droplet (Docker + Compose installed):
-   ```sh
-   git clone <this repo> rave-run && cd rave-run
-   cp .env.example .env && nano .env      # DOMAIN, POSTGRES_PASSWORD, APP_PASSWORD, SESSION_SECRET, SERPAPI_KEY
-   docker compose up -d --build
-   ```
-3. Open `https://your-domain`. Caddy gets the HTTPS certificate automatically. The worker applies migrations and seeds on first start, then checks flights daily at 5:10 AM ET, hotels at 5:40 AM ET and tickets at 6:20 AM ET.
-4. On Android: Chrome → menu → **Install app**.
+See **[docs/DEPLOY.md](docs/DEPLOY.md)**. In short:
 
-Logs: `docker compose logs -f worker`. Manual flight run: `docker compose exec worker npm run worker:once`.
+```sh
+git clone https://github.com/ngfamclam-cpu/Travel-planner.git rave-run && cd rave-run
+git checkout claude/great-franklin-us4rfm
+sudo bash scripts/setup-droplet.sh
+```
+
+The script checks the droplet, installs Docker if needed, writes `.env` with generated secrets, and serves HTTPS via Caddy (or behind your existing web server). It then builds, starts, and prints the URL. Update later with `sudo bash scripts/update.sh`.
 
 ## Layout
 
