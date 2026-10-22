@@ -4,8 +4,13 @@ import {
   buildDateCards,
   cheapestTicket,
   computeSurge,
+  latestPerPlatform,
   lineTotal,
+  lowestTicket,
   sortCards,
+  TICKET_PLATFORMS,
+  type TicketPlatformId,
+  type TicketQuote,
   todayIn,
   defaultHotelLocation,
   destinationFromAirports,
@@ -258,7 +263,7 @@ export async function providerHealth() {
 }
 
 export async function listEvents() {
-  return prisma.event.findMany({ orderBy: { startDate: "asc" }, include: { trips: { select: { id: true } } } });
+  return prisma.event.findMany({ orderBy: { startDate: "asc" }, include: { trips: { select: { id: true } }, ticketWatches: { select: { id: true } } } });
 }
 
 export async function getCards() {
@@ -334,9 +339,13 @@ export async function tripDateCards(tripId: string, requestedTier?: string): Pro
       fetchedAt: s.fetchedAt,
     }));
 
-  // Ticket: cheapest available tier, else the ticket line item(s).
-  let ticket = cheapestTicket(
-    (trip.event?.ticketTiers ?? []).map((t) => ({
+  // Ticket: cheapest available across official tiers and the ticket tracker (fresh, all-in, never Radiate),
+  // else the ticket line item(s).
+  const tracked = trip.event ? [...latestPerPlatform(await ticketQuotes(trip.event.id)).values()] : [];
+  const trackedFresh = tracked.filter((q) => !q.risky && Date.now() - q.observedAt.getTime() <= 48 * 3_600_000);
+  let ticket = cheapestTicket([
+    // Resale tiers older than 48h are dropped (resale moves fast); face-value tiers rarely change.
+    ...(trip.event?.ticketTiers ?? []).filter((t) => !t.isResale || !isStale(t.observedAt)).map((t) => ({
       name: t.name,
       price: num(t.priceAllIn),
       onSale: t.onSale,
@@ -344,7 +353,15 @@ export async function tripDateCards(tripId: string, requestedTier?: string): Pro
       isResale: t.isResale,
       source: t.source,
     })),
-  );
+    ...trackedFresh.map((q) => ({
+      name: `${TICKET_PLATFORMS[q.platform].name}${q.tierLabel ? ` · ${q.tierLabel}` : ""}${q.feesEstimated ? " (est. fees)" : ""}`,
+      price: q.allIn,
+      onSale: true,
+      soldOut: false,
+      isResale: TICKET_PLATFORMS[q.platform].kind !== "official",
+      source: TICKET_PLATFORMS[q.platform].name,
+    })),
+  ]);
   const ticketItems = trip.lineItems.filter((l) => l.kind === "ticket");
   if (!ticket) {
     const sum = ticketItems.reduce((a, l) => a + (lineTotal({ estAmount: num(l.estAmount), quotedAmount: num(l.quotedAmount), bookedAmount: num(l.bookedAmount), qty: l.qty }) ?? 0), 0);
@@ -374,4 +391,125 @@ export async function tripDateCards(tripId: string, requestedTier?: string): Pro
   const sorted = sortCards(cards, tier);
   const complete = sorted.filter((s) => s.price.complete && !s.price.estimated);
   return { tier, savedTier: chosenOpt.hotelTier ?? "cheapest", tiers, cards: sorted, cheapestTotal: complete[0]?.price.total ?? null };
+}
+
+// ---------- ticket tracker ----------
+
+async function ticketQuotes(eventId: string): Promise<TicketQuote[]> {
+  const rows = await prisma.ticketPrice.findMany({
+    where: { eventId, observedAt: { gte: new Date(Date.now() - 60 * 86_400_000) } },
+    orderBy: { observedAt: "desc" },
+  });
+  return rows.map((r) => ({
+    platform: r.platform as TicketPlatformId,
+    allIn: Number(r.allInPrice),
+    listed: Number(r.listedPrice),
+    feesEstimated: r.feesEstimated,
+    highestBid: num(r.highestBid),
+    tierLabel: r.tierLabel,
+    observedAt: r.observedAt,
+    url: r.url,
+    source: r.source as TicketQuote["source"],
+    risky: r.risky,
+  }));
+}
+
+export interface TicketRow {
+  watchId: string;
+  platform: TicketPlatformId;
+  name: string;
+  access: "api" | "page" | "manual";
+  risky: boolean;
+  enabled: boolean;
+  status: string;
+  lastError: string | null;
+  url: string | null;
+  searchUrl: string;
+  lastCheckedAt: Date | null;
+  latest: (TicketQuote & { stale: boolean; note?: string | null }) | null;
+}
+
+export interface EventTickets {
+  eventId: string;
+  eventName: string;
+  city: string;
+  start: string;
+  end: string;
+  target: number | null;
+  tierHint: string | null;
+  rows: TicketRow[];
+  lowest: TicketQuote | null;
+  /** Cross-platform lowest all-in per day (Radiate excluded), for the sparkline. */
+  history: SparkPoint[];
+  tripId: string | null;
+}
+
+export async function eventTickets(eventId: string): Promise<EventTickets | null> {
+  const ev = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: { ticketWatches: true, trips: { select: { id: true, status: true } } },
+  });
+  if (!ev) return null;
+  const quotes = await ticketQuotes(eventId);
+  const latest = latestPerPlatform(quotes);
+  const notes = await prisma.ticketPrice.findMany({ where: { eventId, note: { not: null } }, select: { id: true, note: true, platform: true, observedAt: true }, orderBy: { observedAt: "desc" } });
+  const query = `${ev.name} ${toISODate(ev.startDate).slice(0, 4)}`;
+  const order = Object.keys(TICKET_PLATFORMS);
+  const rows: TicketRow[] = ev.ticketWatches
+    .map((w) => {
+      const p = TICKET_PLATFORMS[w.platform as TicketPlatformId];
+      const q = latest.get(w.platform as TicketPlatformId) ?? null;
+      return {
+        watchId: w.id,
+        platform: p.id,
+        name: p.name,
+        access: p.access,
+        risky: p.risky,
+        enabled: w.enabled,
+        status: w.status,
+        lastError: w.lastError,
+        url: w.url,
+        searchUrl: p.searchUrl(query),
+        lastCheckedAt: w.lastCheckedAt,
+        latest: q
+          ? { ...q, stale: isStale(q.observedAt), note: notes.find((n) => n.platform === p.id && n.observedAt.getTime() === q.observedAt.getTime())?.note }
+          : null,
+      };
+    })
+    .sort((a, b) => order.indexOf(a.platform) - order.indexOf(b.platform));
+
+  const byDay = new Map<string, number>();
+  for (const q of quotes) {
+    if (q.risky) continue;
+    const d = toISODate(q.observedAt);
+    byDay.set(d, Math.min(byDay.get(d) ?? Infinity, q.allIn));
+  }
+  return {
+    eventId: ev.id,
+    eventName: ev.name,
+    city: ev.city,
+    start: toISODate(ev.startDate),
+    end: toISODate(ev.endDate),
+    target: num(ev.ticketTarget),
+    tierHint: ev.ticketTierHint,
+    rows,
+    lowest: lowestTicket([...latest.values()]),
+    history: [...byDay.entries()].sort().map(([date, price]) => ({ date, price })),
+    tripId: ev.trips.find((t) => t.status !== "done")?.id ?? ev.trips[0]?.id ?? null,
+  };
+}
+
+/** Every event the tracker is watching, soonest first. */
+export async function trackedEvents(): Promise<EventTickets[]> {
+  const evs = await prisma.event.findMany({
+    where: { ticketWatches: { some: {} }, endDate: { gte: new Date(`${todayIn()}T00:00:00Z`) } },
+    orderBy: { startDate: "asc" },
+    select: { id: true },
+  });
+  const out: EventTickets[] = [];
+  for (const e of evs) {
+    const t = await eventTickets(e.id);
+    if (t) out.push(t);
+  }
+  return out;
 }

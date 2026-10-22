@@ -1,5 +1,6 @@
 import { prisma } from "@rave-run/db";
-import { resetAirports, savePoints, saveSettings } from "@/app/actions";
+import { TICKET_PLATFORMS } from "@rave-run/core";
+import { resetAirports, savePoints, saveSettings, saveTicketSettings } from "@/app/actions";
 import { getCards, getPoints, getSettings } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -116,6 +117,26 @@ export default async function Settings() {
         <div className="row"><button type="submit">Save settings</button></div>
       </form>
       <form action={resetAirports} style={{ marginTop: 8 }}><button type="submit" className="ghost">Reset airports to defaults</button></form>
+
+      <section className="card" id="tickets">
+        <h2 style={{ marginTop: 0 }}>Ticket fees</h2>
+        <p className="muted">
+          When a site shows prices before fees, this % is added to compare all-in prices. These are rough estimates: check a real checkout and adjust.
+          A blank field uses the default shown.
+        </p>
+        <form action={saveTicketSettings} className="fields">
+          {Object.values(TICKET_PLATFORMS)
+            .filter((p) => !p.listedIncludesFees)
+            .map((p) => (
+              <div key={p.id}>
+                <label>{p.name} fee %</label>
+                <input name={`fee_${p.id}`} inputMode="decimal" defaultValue={s.ticketFeePct[p.id] ?? ""} placeholder={String(p.defaultFeePct)} />
+              </div>
+            ))}
+          <div><label>CrowdVolt alert: ask within $ of bid</label><input name="crowdvoltGapAlert" inputMode="decimal" defaultValue={s.crowdvoltGapAlert} /></div>
+          <div className="wide"><button type="submit">Save ticket settings</button></div>
+        </form>
+      </section>
 
       <section className="card" id="points">
         <h2 style={{ marginTop: 0 }}>Points balances</h2>

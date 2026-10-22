@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { HOTEL_TIER_LABEL, googleFlightsUrl, googleHotelsUrl, searchOrigins, surgeSentence } from "@rave-run/core";
-import { addLineItem, deleteLineItem, deleteTrip, pinHotel, updateLineItem, updateTrip } from "@/app/actions";
+import { addLineItem, deleteLineItem, deleteTrip, pinHotel, trackTickets, updateLineItem, updateTrip } from "@/app/actions";
 import { AlertList } from "@/components/AlertList";
 import { InsightChip, PriceTag, Provenance } from "@/components/PriceTag";
 import { Sparkline } from "@/components/Sparkline";
 import { DateCards } from "@/components/DateCards";
-import { getCards, getSettings, getTrip, openAlerts, tripDateCards, type LineItemView, type TripView } from "@/lib/data";
+import { TicketTracker } from "@/components/TicketTracker";
+import { eventTickets, getCards, getSettings, getTrip, openAlerts, tripDateCards, type LineItemView, type TripView } from "@/lib/data";
 import { fmtDay, fmtRange, fmtWhen, usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -191,6 +192,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   const [t, cards, settings, alerts, dateCards] = await Promise.all([getTrip(id), getCards(), getSettings(), openAlerts(id), tripDateCards(id, tier)]);
   if (!t) notFound();
   const origins = searchOrigins(settings);
+  const tickets = t.event ? await eventTickets(t.event.id) : null;
 
   return (
     <>
@@ -259,6 +261,18 @@ export default async function TripPage({ params, searchParams }: { params: Promi
           </form>
         </details>
       </section>
+
+      {tickets && tickets.rows.length > 0 && <TicketTracker t={tickets} />}
+      {tickets && tickets.rows.length === 0 && (
+        <section className="card">
+          <h2 style={{ marginTop: 0 }}>Tickets</h2>
+          <form action={trackTickets} className="row">
+            <input type="hidden" name="eventId" value={tickets.eventId} />
+            <span className="muted">Track this event's ticket prices across platforms.</span>
+            <button type="submit">Start tracking</button>
+          </form>
+        </section>
+      )}
 
       <section className="card">
         <h2 style={{ marginTop: 0 }}>Arrival guide</h2>

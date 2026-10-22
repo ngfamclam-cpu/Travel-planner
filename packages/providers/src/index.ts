@@ -4,3 +4,8 @@ export * from "./flights/unconfigured";
 export * from "./registry";
 export * from "./hotels/serpapi";
 export * from "./hotels/unconfigured";
+export * from "./tickets/types";
+export * from "./tickets/ticketmaster";
+export * from "./tickets/seatgeek";
+export * from "./tickets/page";
+export * from "./tickets/finder";

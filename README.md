@@ -15,7 +15,8 @@ Following the build order in the spec:
 | 3 | Flight provider, daily snapshots, event-window dates, ±flex variants, surge baseline, sparklines | ✅ (needs `SERPAPI_KEY` for live prices) |
 | 4 | Hotels for the exact nights, refundable-only, quality floors, surge, rebook alerts | ✅ (same `SERPAPI_KEY`) |
 | + | Date cards: every date combination priced end to end, with a hotel pick per card | ✅ |
-| 5 | Ticketmaster / Edmtrain / SeatGeek + discovery | next |
+| + | Ticket tracker: Ticketmaster, SeatGeek, StubHub, Vivid Seats, DICE, RA, CrowdVolt (NYC), Radiate (logged, never counted) + alerts | ✅ |
+| 5 | Edmtrain + live event discovery | next |
 | 6 | Buy-signal engine | |
 | 7 | Points & card engine | |
 | 8 | Daily brief (push + email) | |
@@ -30,6 +31,14 @@ Following the build order in the spec:
 - **Surge:** once a week the worker prices the same trip on a normal week (3 weeks away, skipping holidays and peak seasons) and shows "Flights are 1.4× normal for these dates".
 - **Hotels:** priced for the trip's exact nights, free-cancellation rates only, 3★+ and rated 4.0/5+ (both editable in Settings). The trip page shows the top 3 options. Each hotel line item has an editable search area. The defaults are "near the venue", except EDC (the Strip, where the shuttles leave from) and Tokyo (Shinjuku).
 - **Rebook alerts:** when you mark a hotel as booked, enter the hotel name, stars, rating, and the free-cancellation deadline. Every morning the worker looks for a cheaper free-cancellation rate at the same or a better hotel, with savings of at least $20 or 5%. You get one alert per stay, and it's replaced only when a bigger saving shows up.
+- **Ticket tracker** (Tickets tab and every trip page): the lowest **all-in** price per platform, compared side by side, with a cross-platform history line.
+  - **Sources:** Ticketmaster and SeatGeek through their official APIs. StubHub, Vivid Seats, DICE and Resident Advisor through a polite once-a-day look at the public event page. CrowdVolt is added automatically for NYC-area events and shows its lowest ask and highest bid.
+  - **Page checks:** these follow robots.txt and identify themselves. A site can still block them or change its layout; the row then says "blocked: check manually" and the one-tap link still works.
+  - **Finding event pages:** the worker finds each event's page once via a SerpApi Google search, or you can paste the link yourself.
+  - **Fees:** sites that show prices before fees get an estimated fee % added (editable in Settings) and are marked "est. fees".
+  - **Radiate** is person-to-person and app-only. Prices you log are shown in red as a scam risk and are never used in totals, date cards or alerts.
+  - **Alerts:** at or under your target price, a new lowest anywhere ($15 / 5% or more), face value back on sale or sold out, and a CrowdVolt ask within $20 of the bid. You get one open alert per event and kind, replaced only by a better one.
+  - **Date cards** use the cheapest fresh tracked price, or face value if cheaper. Resale prices older than 48h are ignored.
 - **Seasonal traps** are flagged automatically: NYE week, Thanksgiving, US holiday weekends, Florida spring break, cherry blossom, Golden Week, Songkran, Lunar New Year.
 - **Provenance:** every price shows **booked / quoted / estimate / not priced**, its source and when it was fetched. Quotes older than 48h are marked **stale**. If a source fails, the app says "couldn't check" and never reuses old numbers quietly.
 - **Quota:** every card needs its own hotel search (plus one more each for My hotel and Rental), so a trip with ±2 flex days uses about 12–36 hotel searches per refresh. The $25/month SerpApi plan (1,000 searches) is the practical minimum for daily cards; set the number in Settings. The free SerpApi tier is small, so the worker spreads it over the month: base dates first, then flex variants and baselines, with the most urgent and stalest trips first. Identical searches are cached for 6 hours.
@@ -66,7 +75,7 @@ npm test                                   # unit tests; set TEST_DATABASE_URL t
    cp .env.example .env && nano .env      # DOMAIN, POSTGRES_PASSWORD, APP_PASSWORD, SESSION_SECRET, SERPAPI_KEY
    docker compose up -d --build
    ```
-3. Open `https://your-domain`. Caddy gets the HTTPS certificate automatically. The worker applies migrations and seeds on first start, then checks flights daily at 5:10 AM ET and hotels at 5:40 AM ET.
+3. Open `https://your-domain`. Caddy gets the HTTPS certificate automatically. The worker applies migrations and seeds on first start, then checks flights daily at 5:10 AM ET, hotels at 5:40 AM ET and tickets at 6:20 AM ET.
 4. On Android: Chrome → menu → **Install app**.
 
 Logs: `docker compose logs -f worker`. Manual flight run: `docker compose exec worker npm run worker:once`.
@@ -75,7 +84,7 @@ Logs: `docker compose logs -f worker`. Manual flight run: `docker compose exec w
 
 ```
 apps/web          Next.js App Router PWA (UI, server actions, single-password auth)
-apps/worker       node-cron jobs (flights, hotels + rebook alerts; events and brief later)
+apps/worker       node-cron jobs (flights, hotels + rebook alerts, tickets + ticket alerts; brief later)
 packages/core     pure logic: date windows, variants, surge, seasonal traps, clashes, totals, query planner
 packages/providers one adapter per source behind a common interface; fail soft, never invent prices
 packages/db       Prisma schema, migrations, seed, createTripFromEvent

@@ -29,6 +29,10 @@ export interface AppSettings {
     chaseFreedomVersion: "unknown" | "freedom" | "freedom_flex" | "freedom_unlimited";
   };
   status: { airline: string; hotel: string };
+  /** Fee % per ticket platform, used when a site's price excludes fees (estimates; edit freely). */
+  ticketFeePct: Record<string, number>;
+  /** Alert when CrowdVolt's lowest ask is within this many dollars of the highest bid. */
+  crowdvoltGapAlert: number;
   asiaDestination: "undecided" | "tokyo" | "china";
   nyeChoice: string; // "undecided" or trip id
 }
@@ -54,6 +58,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   flightQuotaShare: 0.6,
   cards: { citiStrataVersion: "unknown", hasChaseSapphire: "unknown", chaseFreedomVersion: "unknown" },
   status: { airline: "", hotel: "" },
+  ticketFeePct: {},
+  crowdvoltGapAlert: 20,
   asiaDestination: "undecided",
   nyeChoice: "undecided",
 };

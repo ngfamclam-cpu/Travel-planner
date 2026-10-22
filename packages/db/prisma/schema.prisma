@@ -61,6 +61,12 @@ model Event {
   updatedAt        DateTime     @updatedAt @map("updated_at")
   ticketTiers      TicketTier[]
   trips            Trip[]
+  // Ticket tracker: alert when the cheapest all-in price anywhere is at or under this.
+  ticketTarget     Decimal?     @map("ticket_target") @db.Decimal(10, 2)
+  /** Which ticket to compare, e.g. "2-day GA". Free text, shown on the tracker. */
+  ticketTierHint   String?      @map("ticket_tier_hint")
+  ticketWatches    TicketWatch[]
+  ticketPrices     TicketPrice[]
 
   @@unique([name, startDate])
   @@map("events")
@@ -303,4 +309,50 @@ model Alert {
 
   @@index([dismissedAt, createdAt])
   @@map("alerts")
+}
+
+// Ticket tracker: one row per event × platform (Ticketmaster, SeatGeek, StubHub, Vivid Seats, CrowdVolt, DICE, RA, Radiate).
+model TicketWatch {
+  id            String        @id @default(cuid())
+  eventId       String        @map("event_id")
+  event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  platform      String
+  url           String?
+  externalId    String?       @map("external_id")
+  enabled       Boolean       @default(true)
+  // ok | needs_link | not_listed | blocked | no_price | error | manual | not_configured
+  status        String        @default("needs_link")
+  lastError     String?       @map("last_error")
+  officialState String?       @map("official_state") // onsale | offsale | soldout | presale (for on-sale alerts)
+  findTried     Boolean       @default(false) @map("find_tried")
+  lastCheckedAt DateTime?     @map("last_checked_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  prices        TicketPrice[]
+
+  @@unique([eventId, platform])
+  @@map("ticket_watches")
+}
+
+model TicketPrice {
+  id            String      @id @default(cuid())
+  watchId       String      @map("watch_id")
+  watch         TicketWatch @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  eventId       String      @map("event_id")
+  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  platform      String
+  listedPrice   Decimal     @map("listed_price") @db.Decimal(10, 2)
+  allInPrice    Decimal     @map("all_in_price") @db.Decimal(10, 2)
+  feesIncluded  Boolean     @map("fees_included")
+  feesEstimated Boolean     @map("fees_estimated")
+  highestBid    Decimal?    @map("highest_bid") @db.Decimal(10, 2)
+  tierLabel     String?     @map("tier_label")
+  source        String // api | page | manual
+  risky         Boolean     @default(false) // Radiate: shown, never counted
+  url           String?
+  note          String?
+  observedAt    DateTime    @default(now()) @map("observed_at")
+  raw           Json?
+
+  @@index([eventId, observedAt])
+  @@map("ticket_prices")
 }

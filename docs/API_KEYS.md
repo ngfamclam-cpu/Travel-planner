@@ -10,12 +10,14 @@ Prices, quotas and signup flows change, so check each provider's page as you sig
 | 2 | `ANTHROPIC_API_KEY` | Daily brief prose + arrival guides (step 8–9) | Pay as you go, cents/day |
 | 3 | `RESEND_API_KEY` | Daily brief by email (step 8) | Free tier |
 | 4 | VAPID keys | Push notifications on your phone (step 8) | Free, no signup |
-| 5 | `TICKETMASTER_API_KEY` | Event discovery + face-value tickets (step 5) | Free |
+| 5 | `TICKETMASTER_API_KEY` | Ticket tracker: face value + on-sale status | Free |
 | 6 | `EDMTRAIN_API_KEY` | EDM festival calendar (step 5) | Free, on request |
-| 7 | `SEATGEEK_CLIENT_ID` | Resale ticket floors (step 5) | Free, if approved |
+| 7 | `SEATGEEK_CLIENT_ID` | Ticket tracker: SeatGeek lowest price | Free, if approved |
 | 8 | `GOOGLE_PLACES_API_KEY` | Real restaurant/place names in arrival guides (step 9) | Free monthly credit, card required |
 
 ---
+
+> **No key needed** for StubHub, Vivid Seats, CrowdVolt, DICE and Resident Advisor: the tracker reads their public event pages once a day. With `SERPAPI_KEY` set, it also finds each event's page for you, using at most 4 searches per day and only once per event and platform. Radiate has no web prices, so you log those by hand.
 
 ## 1. SerpApi (Google Flights + Google Hotels): do this one first
 

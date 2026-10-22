@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { eventClashes, toISODate, type TripLike } from "@rave-run/core";
-import { addTripForEvent, createEvent } from "@/app/actions";
+import { addTripForEvent, createEvent, trackTickets } from "@/app/actions";
 import { listEvents, listTrips } from "@/lib/data";
 import { fmtDay } from "@/lib/format";
 
@@ -52,6 +52,13 @@ export default async function Discover({ searchParams }: { searchParams: Promise
               {clashes.map((c) => <span key={c.id} className="chip bad">clashes with {c.name}</span>)}
               {e.notes && <small>{e.notes}</small>}
             </div>
+            {e.ticketWatches.length === 0 && (
+              <form action={trackTickets} style={{ marginTop: 8 }}>
+                <input type="hidden" name="eventId" value={e.id} />
+                <button type="submit" className="ghost" style={{ fontSize: 13, padding: "4px 10px" }}>🎟 Track tickets</button>
+              </form>
+            )}
+            {e.ticketWatches.length > 0 && <div style={{ marginTop: 6 }}><Link href="/tickets"><small>🎟 tracking tickets</small></Link></div>}
             {e.trips.length > 0 ? (
               <div style={{ marginTop: 8 }}><Link href={`/trips/${e.trips[0].id}`}>Open trip →</Link></div>
             ) : (

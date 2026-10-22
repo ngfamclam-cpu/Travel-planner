@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { DEFAULT_SETTINGS, mergeSettings, nights, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec, type HotelTier } from "@rave-run/core";
-import { createTripFromEvent, day, prisma, refreshTripQuotes, type ChosenOption, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
+import { createTripFromEvent, day, ensureTicketWatches, prisma, recordTicketPrice, refreshTripQuotes, type ChosenOption, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
+import { TICKET_PLATFORMS, type TicketPlatformId } from "@rave-run/core";
 import { SESSION_COOKIE, authConfigured, sessionToken, timingSafeEqual } from "@/lib/auth";
 
 const str = (f: FormData, k: string) => {
@@ -365,4 +366,104 @@ export async function savePoints(f: FormData) {
 export async function dismissAlert(f: FormData) {
   const a = await prisma.alert.update({ where: { id: str(f, "id") }, data: { dismissedAt: new Date() } });
   refresh(a.tripId ?? undefined);
+}
+
+// ---------- ticket tracker ----------
+
+async function revalidateEvent(eventId: string) {
+  revalidatePath("/tickets");
+  revalidatePath("/");
+  const trips = await prisma.trip.findMany({ where: { eventId }, select: { id: true } });
+  for (const t of trips) revalidatePath(`/trips/${t.id}`);
+}
+
+export async function trackTickets(f: FormData) {
+  const eventId = str(f, "eventId");
+  await ensureTicketWatches(prisma, eventId);
+  await revalidateEvent(eventId);
+}
+
+export async function setTicketTarget(f: FormData) {
+  const eventId = str(f, "eventId");
+  await prisma.event.update({
+    where: { id: eventId },
+    data: { ticketTarget: money(f, "target"), ticketTierHint: str(f, "tierHint") || null },
+  });
+  await ensureTicketWatches(prisma, eventId);
+  await revalidateEvent(eventId);
+}
+
+/** Pull the platform's event id out of a pasted link (Ticketmaster /event/{id}, SeatGeek trailing number). */
+function externalIdFrom(platform: TicketPlatformId, url: URL): string | null {
+  if (platform === "ticketmaster") return url.pathname.match(/\/event\/([A-Za-z0-9]+)/)?.[1] ?? null;
+  if (platform === "seatgeek") return url.pathname.match(/\/(\d{5,})(?:\/|$)/)?.[1] ?? null;
+  return null;
+}
+
+export async function saveTicketLink(f: FormData) {
+  const w = await prisma.ticketWatch.findUniqueOrThrow({ where: { id: str(f, "watchId") } });
+  const raw = str(f, "url");
+  const platform = w.platform as TicketPlatformId;
+  if (!raw) {
+    await prisma.ticketWatch.update({ where: { id: w.id }, data: { url: null, externalId: null, status: "needs_link", findTried: true } });
+  } else {
+    const url = new URL(raw);
+    const domain = TICKET_PLATFORMS[platform].domain;
+    if (domain && !url.hostname.endsWith(domain)) throw new Error(`That link isn't on ${domain}`);
+    await prisma.ticketWatch.update({
+      where: { id: w.id },
+      data: { url: url.toString(), externalId: externalIdFrom(platform, url), status: "ok", lastError: null, findTried: true, lastCheckedAt: null },
+    });
+  }
+  await revalidateEvent(w.eventId);
+}
+
+export async function toggleTicketWatch(f: FormData) {
+  const w = await prisma.ticketWatch.findUniqueOrThrow({ where: { id: str(f, "watchId") } });
+  await prisma.ticketWatch.update({ where: { id: w.id }, data: { enabled: !w.enabled } });
+  await revalidateEvent(w.eventId);
+}
+
+/** A price seen by hand (any platform; Radiate is always logged this way and never counted). */
+export async function logTicketPrice(f: FormData) {
+  const eventId = str(f, "eventId");
+  const platform = str(f, "platform") as TicketPlatformId;
+  if (!TICKET_PLATFORMS[platform]) throw new Error("Unknown platform");
+  const price = money(f, "price");
+  if (price == null || price <= 0) throw new Error("Enter a price");
+  const watch = await prisma.ticketWatch.upsert({
+    where: { eventId_platform: { eventId, platform } },
+    create: { eventId, platform, status: TICKET_PLATFORMS[platform].access === "manual" ? "manual" : "needs_link" },
+    update: {},
+  });
+  const settings = mergeSettings(await prisma.setting.findMany());
+  const url = str(f, "url");
+  await recordTicketPrice(
+    prisma,
+    watch,
+    {
+      listed: price,
+      feesIncluded: f.get("feesIncluded") === "on",
+      highestBid: money(f, "highestBid"),
+      tierLabel: str(f, "tier") || null,
+      source: "manual",
+      url: url || null,
+      note: str(f, "note") || null,
+    },
+    settings.ticketFeePct,
+  );
+  await revalidateEvent(eventId);
+}
+
+export async function saveTicketSettings(f: FormData) {
+  const fees: Record<string, number> = {};
+  for (const id of Object.keys(TICKET_PLATFORMS)) {
+    const v = str(f, `fee_${id}`);
+    if (v !== "" && Number.isFinite(Number(v))) fees[id] = Math.max(0, Number(v));
+  }
+  await putSetting("ticketFeePct", fees);
+  const gap = Number(str(f, "crowdvoltGapAlert"));
+  if (Number.isFinite(gap) && gap >= 0) await putSetting("crowdvoltGapAlert", gap);
+  revalidatePath("/settings");
+  revalidatePath("/tickets");
 }
