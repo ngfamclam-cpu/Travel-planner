@@ -317,6 +317,7 @@ export async function saveSettings(f: FormData) {
   await putSetting("briefTime", /^\d{2}:\d{2}$/.test(str(f, "briefTime")) ? str(f, "briefTime") : current.briefTime);
   await putSetting("briefChannels", { push: f.get("briefPush") === "on", email: f.get("briefEmail") === "on" });
   await putSetting("serpapiMonthlyQuota", n("serpapiMonthlyQuota", current.serpapiMonthlyQuota));
+  await putSetting("freeFlightDailyRequests", Math.max(0, Math.round(n("freeFlightDailyRequests", current.freeFlightDailyRequests))));
   await putSetting("cards", {
     citiStrataVersion: (str(f, "citiStrataVersion") || "unknown") as AppSettings["cards"]["citiStrataVersion"],
     hasChaseSapphire: (str(f, "hasChaseSapphire") || "unknown") as AppSettings["cards"]["hasChaseSapphire"],

@@ -1,4 +1,4 @@
-# Rave Run on a single droplet: postgres + web + worker (+ caddy for automatic HTTPS).
+# Rave Run on a single droplet: postgres + web + worker + flights-free (+ caddy for automatic HTTPS).
 # Easiest: run scripts/setup-droplet.sh, which writes .env and picks the right options.
 #   With Caddy (ports 80/443 free):   docker compose --profile caddy up -d --build
 #   Behind your own nginx/Caddy:      docker compose up -d --build   → app on 127.0.0.1:3000
@@ -22,6 +22,14 @@ services:
       interval: 5s
       retries: 10
 
+  flights-free:
+    build: ./services/flights-free
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      MIN_GAP_SECONDS: ${FAST_FLIGHTS_MIN_GAP_SECONDS:-5}
+    # internal only: the worker reaches it at http://flights-free:8080
+
   worker:
     build: { context: ., target: worker }
     restart: unless-stopped
@@ -31,8 +39,10 @@ services:
       DATABASE_URL: postgresql://raverun:${POSTGRES_PASSWORD}@postgres:5432/raverun
       TZ: America/New_York
       NODE_OPTIONS: --max-old-space-size=384
+      FAST_FLIGHTS_URL: http://flights-free:8080
     depends_on:
       postgres: { condition: service_healthy }
+      flights-free: { condition: service_started }
 
   web:
     build: { context: ., target: web }
@@ -42,6 +52,7 @@ services:
     environment:
       DATABASE_URL: postgresql://raverun:${POSTGRES_PASSWORD}@postgres:5432/raverun
       NODE_OPTIONS: --max-old-space-size=384
+      FAST_FLIGHTS_URL: http://flights-free:8080
     ports:
       - "127.0.0.1:3000:3000" # local only; Caddy (or your own proxy) serves it publicly
     depends_on:

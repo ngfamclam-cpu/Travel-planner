@@ -16,6 +16,9 @@ services:
       interval: 5s
       retries: 10
 
+  flights-free:
+    build: ./services/flights-free
+
   worker:
     build: { context: ., target: worker }
     env_file:
@@ -24,6 +27,7 @@ services:
     environment:
       DATABASE_URL: postgresql://raverun:raverun@postgres:5432/raverun
       TZ: America/New_York
+      FAST_FLIGHTS_URL: http://flights-free:8080
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -37,6 +41,7 @@ services:
       APP_PASSWORD: ${APP_PASSWORD:-raverun}
       SESSION_SECRET: ${SESSION_SECRET:-local-only-secret-change-me-for-a-real-server}
       COOKIE_SECURE: "0" # plain http on localhost
+      FAST_FLIGHTS_URL: http://flights-free:8080
     ports:
       - "3000:3000"
     depends_on:

@@ -15,6 +15,7 @@ Following the build order in the spec:
 | 3 | Flight provider, daily snapshots, event-window dates, ±flex variants, surge baseline, sparklines | ✅ (needs `SERPAPI_KEY` for live prices) |
 | 4 | Hotels for the exact nights, refundable-only, quality floors, surge, rebook alerts | ✅ (same `SERPAPI_KEY`) |
 | + | Date cards: every date combination priced end to end, with a hotel pick per card | ✅ |
+| + | Free flight source: Google Flights via the open-source fast-flights library (no key), SerpApi as fallback | ✅ |
 | + | Ticket tracker: Ticketmaster, SeatGeek, StubHub, Vivid Seats, DICE, RA, CrowdVolt (NYC), Radiate (logged, never counted) + alerts | ✅ |
 | 5 | Edmtrain + live event discovery | next |
 | 6 | Buy-signal engine | |
@@ -41,6 +42,7 @@ Following the build order in the spec:
   - **Date cards** use the cheapest fresh tracked price, or face value if cheaper. Resale prices older than 48h are ignored.
 - **Seasonal traps** are flagged automatically: NYE week, Thanksgiving, US holiday weekends, Florida spring break, cherry blossom, Golden Week, Songkran, Lunar New Year.
 - **Provenance:** every price shows **booked / quoted / estimate / not priced**, its source and when it was fetched. Quotes older than 48h are marked **stale**. If a source fails, the app says "couldn't check" and never reuses old numbers quietly.
+- **Free flights:** flights come from a small sidecar (`services/flights-free`) built on the open-source [fast-flights](https://github.com/AWeirdDev/flights) library. It reads Google Flights directly, with no key or account. Each airport pair is one request, spaced 5–8 seconds apart, up to a daily cap (Settings, default 120). The chosen dates search every origin airport; other date cards search BOS plus whichever airport won last time. It's unofficial: if Google blocks it or changes its pages, the worker switches to SerpApi for the rest of that run (if you have a key) and the Keys page says why. These prices don't carry Google's low/typical/high label.
 - **Quota:** every card needs its own hotel search (plus one more each for My hotel and Rental), so a trip with ±2 flex days uses about 12–36 hotel searches per refresh. The $25/month SerpApi plan (1,000 searches) is the practical minimum for daily cards; set the number in Settings. The free SerpApi tier is small, so the worker spreads it over the month: base dates first, then flex variants and baselines, with the most urgent and stalest trips first. Identical searches are cached for 6 hours.
 
 ## Seed data (Oct 22, 2026)
@@ -86,6 +88,7 @@ The script checks the droplet, installs Docker if needed, writes `.env` with gen
 
 ```
 apps/web          Next.js App Router PWA (UI, server actions, single-password auth)
+services/flights-free  Python sidecar: free Google Flights source (fast-flights)
 apps/worker       node-cron jobs (flights, hotels + rebook alerts, tickets + ticket alerts; brief later)
 packages/core     pure logic: date windows, variants, surge, seasonal traps, clashes, totals, query planner
 packages/providers one adapter per source behind a common interface; fail soft, never invent prices

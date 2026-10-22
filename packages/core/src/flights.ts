@@ -63,6 +63,11 @@ export interface PlannerItem {
   chosen?: TravelWindow;
   flexDays: number;
   event?: { start: ISODate; end: ISODate };
+  /**
+   * Origins for the other date cards. When every airport costs a request (free source),
+   * the job passes BOS plus whichever airport won last time, instead of all six.
+   */
+  variantOrigins?: string[];
   /** Last fetch time per variant label ("base", "-1/+1", "baseline"). */
   lastFetched: Record<string, Date | undefined>;
   isPeak: (w: TravelWindow) => boolean;
@@ -84,6 +89,8 @@ export interface PlanOptions {
   /** Don't re-run a variant fetched more recently than this. */
   minHoursBetween?: number;
   maxVariantsPerItem?: number;
+  /** Quota units a query costs (default 1); the budget is in these units. */
+  cost?: (q: FlightQuery) => number;
 }
 
 function variantWeight(v: DateVariant): number {
@@ -107,8 +114,8 @@ export function planFlightQueries(items: PlannerItem[], opts: PlanOptions): Plan
     if (daysOut < 0) continue; // trip already started
     const urgency = daysOut <= 21 ? 2 : daysOut <= 60 ? 1.5 : daysOut <= 150 ? 1 : 0.6;
     const origins = item.spec.origins?.length ? item.spec.origins : opts.defaultOrigins;
-    const mk = (w: TravelWindow): FlightQuery => ({
-      origins,
+    const mk = (w: TravelWindow, narrow = false): FlightQuery => ({
+      origins: narrow && item.variantOrigins?.length ? item.variantOrigins : origins,
       destinations: item.spec.destinations,
       outboundDate: w.arrive,
       returnDate: w.depart,
@@ -137,7 +144,7 @@ export function planFlightQueries(items: PlannerItem[], opts: PlanOptions): Plan
         lineItemId: item.lineItemId,
         variant: v.label,
         isBaseline: false,
-        query: mk(v),
+        query: mk(v, v.label !== chosenLabel),
         priority: (v.label === chosenLabel ? 110 : variantWeight(v)) * urgency + st.bonus,
       });
     }
@@ -150,13 +157,23 @@ export function planFlightQueries(items: PlannerItem[], opts: PlanOptions): Plan
         lineItemId: item.lineItemId,
         variant: "baseline",
         isBaseline: true,
-        query: mk(baselineWindow(chosen, item.isPeak)),
+        query: mk(baselineWindow(chosen, item.isPeak), true),
         priority: lastBase ? 35 : 70,
       });
     }
   }
 
-  return candidates.sort((a, b) => b.priority - a.priority).slice(0, Math.max(0, opts.budget));
+  // Highest priority first, until the budget (in cost units) runs out; cheaper queries can still fit.
+  const out: PlannedQuery[] = [];
+  let left = Math.max(0, opts.budget);
+  for (const c of candidates.sort((a, b) => b.priority - a.priority)) {
+    const cost = opts.cost ? opts.cost(c.query) : 1;
+    if (cost <= left) {
+      out.push(c);
+      left -= cost;
+    }
+  }
+  return out;
 }
 
 /** Spread the remaining monthly allowance evenly over the days left in the month. */

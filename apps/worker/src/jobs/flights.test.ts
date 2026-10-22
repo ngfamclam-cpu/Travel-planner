@@ -73,6 +73,32 @@ describe.skipIf(!url)("flight job", () => {
     expect(fake.queries.some((q) => q.outboundDate === "2027-03-25" && q.returnDate === "2027-03-29")).toBe(false);
   });
 
+  it("free source: narrows origins on other date cards and fails over to SerpApi", async () => {
+    await prisma.priceSnapshot.deleteMany();
+    await prisma.providerRun.deleteMany();
+    const queries: FlightQuery[] = [];
+    const free: FlightProvider = {
+      info: { name: "google_flights_free", tier: "free", configured: true, envKeys: [], costPerPair: true },
+      cost: (q) => q.origins.length * q.destinations.length,
+      search: async (q) => {
+        queries.push(q);
+        return { ok: false, provider: "google_flights_free", error: "parse: layout changed" };
+      },
+    };
+    const serp = new FakeFlights();
+    const r = await runFlightJob(prisma, free, { budget: 200, fallback: serp, failoverAfter: 2, now: new Date("2026-10-24T12:00:00Z"), log: () => {} });
+    expect(queries).toHaveLength(2);
+    expect(queries[0].origins).toEqual(["BOS", "PVD", "MHT", "JFK", "EWR", "LGA"]); // chosen dates: all airports
+    expect(queries[1].origins).toEqual(["BOS"]); // other cards: BOS (+ last winner)
+    expect(serp.queries.length).toBeGreaterThan(0);
+    expect(r.snapshots).toBe(serp.queries.length);
+    const runs = await prisma.providerRun.findMany({ orderBy: { provider: "asc" } });
+    expect(runs.map((x) => [x.provider, x.ok, x.queries])).toEqual([
+      ["fake", true, serp.queries.length],
+      ["google_flights_free", false, 0],
+    ]);
+  });
+
   it("records a failed run when not configured", async () => {
     const off: FlightProvider = { info: { name: "none", tier: "free", configured: false, envKeys: ["SERPAPI_KEY"] }, search: async () => ({ ok: false, provider: "none", error: "x" }) };
     const r = await runFlightJob(prisma, off, { log: () => {} });

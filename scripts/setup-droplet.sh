@@ -105,7 +105,9 @@ if [[ $USE_CADDY -eq 1 ]]; then
   fi
 fi
 if [[ -z "$(get_env SERPAPI_KEY)" ]]; then
-  KEY=$(ask "SerpApi key for real flight/hotel prices (blank = add later in .env)" "")
+  echo "  Flights use the free Google Flights source (no key). A free SerpApi key adds hotel prices"
+  echo "  and a flight backup if Google blocks the free source (serpapi.com, no card needed)."
+  KEY=$(ask "SerpApi key (blank = skip, add later in .env)" "")
   [[ -n "$KEY" ]] && set_env SERPAPI_KEY "$KEY"
 fi
 chmod 600 .env
@@ -134,6 +136,12 @@ for _ in $(seq 1 30); do
 done
 curl -fsS -o /dev/null http://127.0.0.1:3000/login && ok "Web app answering on 127.0.0.1:3000" || fail "Web app not answering: docker compose logs web"
 
+if docker compose exec -T worker node -e "fetch('http://flights-free:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then
+  ok "Free flight source running"
+else
+  warn "Free flight source not answering yet: docker compose logs flights-free"
+fi
+
 # ---------------------------------------------------------------- done
 bold "Done"
 if [[ $USE_CADDY -eq 1 ]]; then
@@ -151,5 +159,5 @@ else
 NGINX
 fi
 echo "  Password:  $(get_env APP_PASSWORD)"
-echo "  Check now: docker compose exec worker npm run worker:once   (real prices need SERPAPI_KEY)"
+echo "  Check now: docker compose exec worker npm run worker:once   (flights are free; hotels need SERPAPI_KEY)"
 echo "  Update:    sudo bash scripts/update.sh"

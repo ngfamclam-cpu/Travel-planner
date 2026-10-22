@@ -46,9 +46,18 @@ npm run demo        # optional: fake DEMO prices
 npm run dev         # http://localhost:3000 (no password in dev mode)
 ```
 
+Free flight source without Docker (needs Python 3.10+):
+
+```sh
+cd services/flights-free && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python app.py            # listens on :8080
+# in the worker's environment:
+export FAST_FLIGHTS_URL=http://127.0.0.1:8080
+```
+
 ## Real prices
 
-Copy `.env.example` to `.env` and fill in `SERPAPI_KEY`, plus `TICKETMASTER_API_KEY` and `SEATGEEK_CLIENT_ID` if you have them (see `docs/API_KEYS.md`). Then restart the app and run one check now:
+Flights are free: the `flights-free` service starts with Docker Compose, with no key needed. For hotels, copy `.env.example` to `.env` and fill in `SERPAPI_KEY`, plus `TICKETMASTER_API_KEY` and `SEATGEEK_CLIENT_ID` if you have them (see `docs/API_KEYS.md`). Then restart the app and run one check now:
 
 ```sh
 docker compose -f docker-compose.local.yml run --rm worker npm run worker:once   # Docker

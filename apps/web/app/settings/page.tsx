@@ -110,8 +110,9 @@ export default async function Settings() {
             <div><label><input type="checkbox" name="briefPush" defaultChecked={s.briefChannels.push} /> Push</label></div>
             <div><label><input type="checkbox" name="briefEmail" defaultChecked={s.briefChannels.email} /> Email</label></div>
             <div><label>SerpApi searches / month</label><input name="serpapiMonthlyQuota" type="number" defaultValue={s.serpapiMonthlyQuota} /></div>
+            <div><label>Free flight source: requests / day</label><input name="freeFlightDailyRequests" type="number" min={0} defaultValue={s.freeFlightDailyRequests} /></div>
           </div>
-          <p className="muted"><small>Data tier: {s.dataTier}. The brief (step 8) and the savings meter (step 10) aren't built yet.</small></p>
+          <p className="muted"><small>The free flight source makes one Google Flights request per airport pair, spaced several seconds apart. Keep it modest (≈100–150/day) so Google doesn't block your server. Data tier: {s.dataTier}. The brief (step 8) and the savings meter (step 10) aren't built yet.</small></p>
         </section>
 
         <div className="row"><button type="submit">Save settings</button></div>

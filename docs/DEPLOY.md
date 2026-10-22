@@ -7,7 +7,7 @@
 | Your droplet | ✅ | Ubuntu or Debian. 1 GB RAM is enough to run it; the setup script adds swap so the build fits. |
 | SSH access as root (or sudo) | ✅ | `ssh root@your-droplet-ip` |
 | A domain | Optional | Without one, the app uses a free `your-ip.sslip.io` address with real HTTPS. |
-| `SERPAPI_KEY` | For real flight/hotel prices | Free tier: 250 searches/month (some SerpApi pages say 100). $25/mo for 1,000. See `docs/API_KEYS.md`. |
+| `SERPAPI_KEY` | For hotel prices (flights are free without it) | Free tier, no card: 250 searches/month (some SerpApi pages say 100). $25/mo for 1,000. See `docs/API_KEYS.md`. |
 | `TICKETMASTER_API_KEY`, `SEATGEEK_CLIENT_ID` | Optional | Free. Other ticket sites need no key. |
 
 ## Steps (about 20 minutes, most of it the first build)
@@ -46,19 +46,22 @@ Check your plan's numbers on the droplet's page. The only thing that can cost ex
 
 If the droplet already runs other sites, the app adds roughly 600 MB of RAM. Run `--check` first and look at `free -m`. If RAM + swap is tight, the script's swap file covers it.
 
+**Free flight source:** no account, no quota, no bill. The only limit is the daily request cap you set, which keeps Google from noticing.
+
 **SerpApi:** this is the real usage limit. The app spreads your monthly allowance over the month: 60% flights, 40% hotels, and at most 4 searches a day to find ticket pages. It never goes over the number you set in **Settings → SerpApi searches / month**. On the free tier, date cards fill in over several days. On the $25 plan they refresh most days.
 
 **Other APIs:** Ticketmaster and SeatGeek are free and the app stays far under their limits.
 
 ## Will it work?
 
-- **Flights, hotels, Ticketmaster, SeatGeek:** yes, once the keys are in `.env`. These are official APIs.
+- **Flights (free source):** most likely, but not guaranteed. It reads Google Flights the way a browser does, from your droplet's IP. Google sometimes blocks or rate-limits cloud servers. If it does, the Keys page shows `google_flights_free` failing, and the worker switches to SerpApi for that run if you have a key. Lowering **Settings → Free flight source: requests / day** helps.
+- **Hotels, Ticketmaster, SeatGeek:** yes, once the keys are in `.env`. These are official APIs.
 - **StubHub, Vivid Seats, CrowdVolt, DICE, RA page checks:** partly. These sites often block requests from cloud servers (DigitalOcean IPs are well known), so expect some rows to say "blocked: check manually". The one-tap links and the log-a-price form always work. DICE and RA are the most likely to work; Vivid Seats and StubHub the least.
 - **Radiate:** manual by design.
 
 ## First real run
 
-After the setup script finishes, with `SERPAPI_KEY` set:
+After the setup script finishes (flights need nothing; hotels need `SERPAPI_KEY`):
 
 ```sh
 docker compose exec worker npm run worker:once

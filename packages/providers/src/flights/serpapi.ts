@@ -155,7 +155,7 @@ export class SerpApiFlightProvider implements FlightProvider {
   }
 
   /** Searches this call would spend against the quota (cache misses only). */
-  searchesPerQuery(q: FlightQuery): number {
+  cost(q: FlightQuery): number {
     return (this.opts.combineAirports ?? true) ? 1 : q.origins.length * q.destinations.length;
   }
 

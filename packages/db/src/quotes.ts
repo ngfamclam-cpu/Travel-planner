@@ -16,6 +16,7 @@ type Snap = Prisma.PriceSnapshotGetPayload<object>;
 /** Human label for where a snapshot came from. Anything not from a real provider says so. */
 export function providerLabel(provider: string, kind: string): string {
   if (provider === "serpapi_google_flights") return "Google Flights via SerpApi";
+  if (provider === "google_flights_free") return "Google Flights (free source)";
   if (provider === "serpapi_google_hotels") return "Google Hotels via SerpApi";
   if (provider.startsWith("demo")) return "DEMO data (fake, for testing)";
   return `${kind === "hotel" ? "Hotels" : "Flights"} via ${provider}`;

@@ -6,7 +6,8 @@ Prices, quotas and signup flows change, so check each provider's page as you sig
 
 | Order | Key | What it unlocks | Cost |
 |---|---|---|---|
-| **1 — do now** | `SERPAPI_KEY` | Real Google Flights prices for your event dates (and hotels in step 4) | Free tier |
+| — | *(none)* | **Flight prices: free, no key.** The flights-free sidecar reads Google Flights directly | $0 |
+| **1 — recommended** | `SERPAPI_KEY` | Hotel prices, plus a flight backup if Google blocks the free source | Free tier, no card |
 | 2 | `ANTHROPIC_API_KEY` | Daily brief prose + arrival guides (step 8–9) | Pay as you go, cents/day |
 | 3 | `RESEND_API_KEY` | Daily brief by email (step 8) | Free tier |
 | 4 | VAPID keys | Push notifications on your phone (step 8) | Free, no signup |
@@ -19,7 +20,9 @@ Prices, quotas and signup flows change, so check each provider's page as you sig
 
 > **No key needed** for StubHub, Vivid Seats, CrowdVolt, DICE and Resident Advisor: the tracker reads their public event pages once a day. With `SERPAPI_KEY` set, it also finds each event's page for you, using at most 4 searches per day and only once per event and platform. Radiate has no web prices, so you log those by hand.
 
-## 1. SerpApi (Google Flights + Google Hotels): do this one first
+## 1. SerpApi (hotels + flight backup)
+
+Flights work without this key. SerpApi gives you real hotel prices, finds ticket-site event pages for you, and takes over flights for the day if Google blocks the free source.
 
 1. Go to **https://serpapi.com/users/sign_up** and create an account (email + phone verification).
 2. Pick the **Free** plan. SerpApi's own pages list it as 250 searches/month in one place and 100 in another. Check what your dashboard shows.

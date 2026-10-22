@@ -23,6 +23,8 @@ export interface AppSettings {
   serpapiMonthlyQuota: number;
   /** Share of the monthly quota the flight job may use (rest left for hotels later). */
   flightQuotaShare: number;
+  /** Requests per day the free Google Flights source may make (one per airport pair). */
+  freeFlightDailyRequests: number;
   cards: {
     citiStrataVersion: "unknown" | "strata" | "strata_premier" | "strata_elite";
     hasChaseSapphire: "unknown" | "yes" | "no";
@@ -56,6 +58,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dataTier: "free",
   serpapiMonthlyQuota: 250,
   flightQuotaShare: 0.6,
+  freeFlightDailyRequests: 120,
   cards: { citiStrataVersion: "unknown", hasChaseSapphire: "unknown", chaseFreedomVersion: "unknown" },
   status: { airline: "", hotel: "" },
   ticketFeePct: {},
@@ -105,6 +108,6 @@ export function setupChecklist(
     { id: "brief", question: "Daily brief time and channels", done: true, href: "/settings#brief" },
     { id: "asia", question: "Asia destination: Tokyo or a city in China?", done: s.asiaDestination !== "undecided", href: "/compare" },
     { id: "nye", question: "NYE choice: HiJinx or an alternative?", done: s.nyeChoice !== "undecided", href: "/compare" },
-    { id: "serpapi", question: "Add a SerpApi key (flights + hotels)", done: !!ctx.keys.SERPAPI_KEY, href: "/setup" },
+    { id: "serpapi", question: "Add a free SerpApi key for hotel prices (flights already use the free source)", done: !!ctx.keys.SERPAPI_KEY, href: "/setup" },
   ];
 }

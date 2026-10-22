@@ -168,6 +168,16 @@ describe("flight planner", () => {
     expect(plan.filter((p) => p.isBaseline)).toHaveLength(1);
   });
 
+  it("counts cost per airport pair and narrows origins for other date cards", () => {
+    const plan = planFlightQueries(
+      [{ ...base, lineItemId: "u", window: { arrive: "2027-03-25", depart: "2027-03-29" }, variantOrigins: ["BOS"], lastFetched: {} }],
+      { ...opts, defaultOrigins: ["BOS", "PVD", "JFK"], budget: 10, cost: (q) => q.origins.length * q.destinations.length },
+    );
+    // base: 3 origins × 2 destinations = 6; each other card: 1 × 2 = 2 → base + 2 cards
+    expect(plan.map((p) => p.query.origins.length)).toEqual([3, 1, 1]);
+    expect(plan[0].variant).toBe("base");
+  });
+
   it("budgets the rest of the month evenly", () => {
     expect(dailyBudget(150, 0, "2026-10-22")).toBe(15); // 10 days left incl. today
     expect(dailyBudget(150, 150, "2026-10-22")).toBe(0);

@@ -24,7 +24,7 @@ export default async function Setup() {
                 <td><code>{k.env}</code></td>
                 <td>{k.purpose}</td>
                 <td>step {k.step}</td>
-                <td>{keys[k.env] ? <span className="chip good">set</span> : <span className={`chip ${k.step <= 3 ? "bad" : ""}`}>missing</span>}</td>
+                <td>{keys[k.env] ? <span className="chip good">set</span> : <span className="chip">missing</span>}</td>
               </tr>
             ))}
           </tbody>

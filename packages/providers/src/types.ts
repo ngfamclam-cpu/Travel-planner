@@ -15,8 +15,10 @@ export interface ProviderInfo {
 }
 
 export interface FlightProvider {
-  info: ProviderInfo;
+  info: ProviderInfo & { costPerPair?: boolean };
   search(q: FlightQuery): Promise<ProviderResult<FlightOffer>>;
+  /** Quota units a cache miss costs (default 1). */
+  cost?(q: FlightQuery): number;
 }
 
 // Event and award interfaces are implemented in later build steps (events: step 5, awards: step 10).

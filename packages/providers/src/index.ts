@@ -9,3 +9,4 @@ export * from "./tickets/ticketmaster";
 export * from "./tickets/seatgeek";
 export * from "./tickets/page";
 export * from "./tickets/finder";
+export * from "./flights/fastflights";

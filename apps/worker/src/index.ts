@@ -1,7 +1,7 @@
 // Rave Run worker: scheduled scrapes and price snapshots. All schedules in America/New_York (spec §4).
 import cron from "node-cron";
 import { prisma } from "@rave-run/db";
-import { findEventPage, flightProvider, hotelProvider, ticketCheckers } from "@rave-run/providers";
+import { findEventPage, flightProviders, hotelProvider, ticketCheckers } from "@rave-run/providers";
 import { pgQueryCache } from "./cache";
 import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
@@ -16,13 +16,13 @@ const TICKET_SCHEDULE = process.env.TICKET_CRON ?? "20 6 * * *";
 const PAUSE_MS = Number(process.env.WORKER_PAUSE_MS ?? 20_000);
 
 async function flights() {
-  const provider = flightProvider(process.env, pgQueryCache(prisma));
+  const { primary, fallback } = flightProviders(process.env, pgQueryCache(prisma));
   try {
-    await runFlightJob(prisma, provider, { pauseMs: PAUSE_MS });
+    await runFlightJob(prisma, primary, { pauseMs: primary.info.costPerPair ? 0 : PAUSE_MS, fallback });
   } catch (e) {
     console.error("Flight job crashed:", e);
     await prisma.providerRun.create({
-      data: { provider: provider.info.name, kind: "flight", ok: false, error: `crash: ${(e as Error).message}` },
+      data: { provider: primary.info.name, kind: "flight", ok: false, error: `crash: ${(e as Error).message}` },
     });
   }
 }
