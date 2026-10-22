@@ -14,6 +14,7 @@ Following the build order in the spec:
 | 2 | Trips + line items UI, editable estimates, totals, compare view | ✅ |
 | 3 | Flight provider, daily snapshots, event-window dates, ±flex variants, surge baseline, sparklines | ✅ (needs `SERPAPI_KEY` for live prices) |
 | 4 | Hotels for the exact nights, refundable-only, quality floors, surge, rebook alerts | ✅ (same `SERPAPI_KEY`) |
+| + | Date cards: every date combination priced end to end, with a hotel pick per card | ✅ |
 | 5 | Ticketmaster / Edmtrain / SeatGeek + discovery | next |
 | 6 | Buy-signal engine | |
 | 7 | Points & card engine | |
@@ -23,14 +24,15 @@ Following the build order in the spec:
 
 ## How prices work
 
-- **Event window:** a trip built from an event arrives the day before it starts and leaves the day after it ends. The worker also searches ±1–2 day variants (never ones that miss part of the event) and keeps the cheapest.
+- **Event window:** a trip built from an event arrives the day before it starts and leaves the day after it ends. The worker also searches ±1–2 day variants. A variant may land on day one (marked **arrive day 1**) but always leaves the day after the last day or later, because shows run late.
+- **Date cards:** the top of each trip page is a row of cards like Google Flights' date grid, one per date combination, sorted cheapest first. Each card is priced end to end: the cheapest flight for those dates, a hotel for those exact nights, the cheapest available ticket tier (face value on sale, else the resale floor), and fixed costs like shuttles. Switch the hotel pick with the chips: **Cheapest**, **Best value** (highest rated within 25% of the cheapest), **Best rated**, **My hotel** (pin any hotel and it's priced on every card), and **Rental** (Google's vacation rentals: Airbnb/VRBO-style listings). **Use these dates** sets the trip's dates and hotel pick, and the line items re-quote for exactly that choice. Cards stay anchored to the original window, so choosing one doesn't shift the grid.
 - **All six airports at once:** BOS, PVD, MHT, JFK, EWR, LGA. Each airport's positioning cost (e.g. ~$60 to get to NYC) is added before comparing, so a cheaper JFK fare only wins if it's still cheaper after getting there.
 - **Surge:** once a week the worker prices the same trip on a normal week (3 weeks away, skipping holidays and peak seasons) and shows "Flights are 1.4× normal for these dates".
 - **Hotels:** priced for the trip's exact nights, free-cancellation rates only, 3★+ and rated 4.0/5+ (both editable in Settings). The trip page shows the top 3 options. Each hotel line item has an editable search area. The defaults are "near the venue", except EDC (the Strip, where the shuttles leave from) and Tokyo (Shinjuku).
 - **Rebook alerts:** when you mark a hotel as booked, enter the hotel name, stars, rating, and the free-cancellation deadline. Every morning the worker looks for a cheaper free-cancellation rate at the same or a better hotel, with savings of at least $20 or 5%. You get one alert per stay, and it's replaced only when a bigger saving shows up.
 - **Seasonal traps** are flagged automatically: NYE week, Thanksgiving, US holiday weekends, Florida spring break, cherry blossom, Golden Week, Songkran, Lunar New Year.
 - **Provenance:** every price shows **booked / quoted / estimate / not priced**, its source and when it was fetched. Quotes older than 48h are marked **stale**. If a source fails, the app says "couldn't check" and never reuses old numbers quietly.
-- **Quota:** the free SerpApi tier is small, so the worker spreads it over the month: base dates first, then flex variants and baselines, with the most urgent and stalest trips first. Identical searches are cached for 6 hours.
+- **Quota:** every card needs its own hotel search (plus one more each for My hotel and Rental), so a trip with ±2 flex days uses about 12–36 hotel searches per refresh. The $25/month SerpApi plan (1,000 searches) is the practical minimum for daily cards; set the number in Settings. The free SerpApi tier is small, so the worker spreads it over the month: base dates first, then flex variants and baselines, with the most urgent and stalest trips first. Identical searches are cached for 6 hours.
 
 ## Seed data (Oct 22, 2026)
 

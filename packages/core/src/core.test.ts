@@ -35,11 +35,12 @@ describe("event windows (spec §3)", () => {
     expect(vs[0].label).toBe("base");
     for (const v of vs) {
       expect(v.arrive <= ev.start).toBe(true);
-      expect(v.depart >= ev.end).toBe(true);
+      expect(v.depart > ev.end).toBe(true); // never leave on the last day
     }
-    // arrive shifts: -2,-1,0,+1 (on start day); depart: -1,0,+1,+2 → 16 combos
-    expect(vs).toHaveLength(16);
-    expect(vs.some((v) => v.label === "+1/-1")).toBe(true);
+    // arrive shifts: -2,-1,0,+1 (on day one); depart: 0,+1,+2 → 12 combos
+    expect(vs).toHaveLength(12);
+    expect(vs.some((v) => v.label === "+1/0")).toBe(true);
+    expect(vs.some((v) => v.retShift < 0)).toBe(false);
     expect(vs.some((v) => v.outShift === 2)).toBe(false);
   });
 

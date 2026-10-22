@@ -3,8 +3,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { DEFAULT_SETTINGS, mergeSettings, nights, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec } from "@rave-run/core";
-import { createTripFromEvent, day, prisma, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
+import { DEFAULT_SETTINGS, mergeSettings, nights, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec, type HotelTier } from "@rave-run/core";
+import { createTripFromEvent, day, prisma, refreshTripQuotes, type ChosenOption, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
 import { SESSION_COOKIE, authConfigured, sessionToken, timingSafeEqual } from "@/lib/auth";
 
 const str = (f: FormData, k: string) => {
@@ -71,7 +71,13 @@ export async function updateLineItem(f: FormData) {
   const hotelData: Prisma.LineItemUncheckedUpdateInput = {};
   if (li.kind === "hotel") {
     const query = str(f, "hotelQuery");
-    const spec: HotelSearchSpec = { ...((li.searchSpec ?? {}) as HotelSearchSpec), query: query || undefined };
+    const pinned = str(f, "pinnedHotel");
+    const spec: HotelSearchSpec = {
+      ...((li.searchSpec ?? {}) as HotelSearchSpec),
+      query: query || undefined,
+      pinned: pinned ? { name: pinned } : undefined,
+      includeRentals: f.get("includeRentals") === "on",
+    };
     hotelData.searchSpec = spec as Prisma.InputJsonValue;
     if (booked != null) {
       const optNum = (k: string) => (str(f, k) && Number.isFinite(Number(str(f, k))) ? Number(str(f, k)) : undefined);
@@ -151,13 +157,7 @@ export async function updateTrip(f: FormData) {
   const arrive = isoDate(f, "arrive");
   const depart = isoDate(f, "depart");
   if (depart <= arrive) throw new Error("Depart must be after arrive");
-  const before = await prisma.trip.findUniqueOrThrow({ where: { id } });
-  const oldNights = nights({ arrive: toISODate(before.arriveDate), depart: toISODate(before.departDate) });
-  const newNights = nights({ arrive, depart });
-  // Hotel stays that covered the whole trip keep covering it.
-  if (oldNights !== newNights) {
-    await prisma.lineItem.updateMany({ where: { tripId: id, kind: "hotel", qty: oldNights }, data: { qty: newNights } });
-  }
+  await syncHotelNights(id, arrive, depart);
   await prisma.trip.update({
     where: { id },
     data: {
@@ -169,7 +169,52 @@ export async function updateTrip(f: FormData) {
       notes: str(f, "notes") || null,
     },
   });
+  await refreshTripQuotes(prisma, id);
   refresh(id);
+}
+
+/** Hotel stays that covered the whole trip keep covering it when the dates change. */
+async function syncHotelNights(tripId: string, arrive: string, depart: string) {
+  const before = await prisma.trip.findUniqueOrThrow({ where: { id: tripId } });
+  const oldNights = nights({ arrive: toISODate(before.arriveDate), depart: toISODate(before.departDate) });
+  const newNights = nights({ arrive, depart });
+  if (oldNights !== newNights) {
+    await prisma.lineItem.updateMany({ where: { tripId, kind: "hotel", qty: oldNights }, data: { qty: newNights } });
+  }
+}
+
+const TIERS: HotelTier[] = ["cheapest", "value", "rated", "pinned", "rental"];
+
+/** Pick a date card: the trip takes those dates and hotel pick; cards stay anchored where they were. */
+export async function chooseDates(f: FormData) {
+  const id = str(f, "tripId");
+  const arrive = isoDate(f, "arrive");
+  const depart = isoDate(f, "depart");
+  if (depart <= arrive) throw new Error("Depart must be after arrive");
+  const tier = str(f, "tier") as HotelTier;
+  const trip = await prisma.trip.findUniqueOrThrow({ where: { id } });
+  const prev = (trip.chosenOption ?? {}) as ChosenOption;
+  const chosenOption: ChosenOption = {
+    anchor: prev.anchor ?? { arrive: toISODate(trip.arriveDate), depart: toISODate(trip.departDate) },
+    hotelTier: TIERS.includes(tier) ? tier : prev.hotelTier ?? "cheapest",
+  };
+  await syncHotelNights(id, arrive, depart);
+  await prisma.trip.update({
+    where: { id },
+    data: { arriveDate: day(arrive), departDate: day(depart), chosenOption: chosenOption as Prisma.InputJsonValue },
+  });
+  await refreshTripQuotes(prisma, id);
+  refresh(id);
+  redirect(`/trips/${id}?tier=${chosenOption.hotelTier}`);
+}
+
+/** "My hotel": price this hotel on every date card. */
+export async function pinHotel(f: FormData) {
+  const li = await prisma.lineItem.findUniqueOrThrow({ where: { id: str(f, "id") } });
+  const name = str(f, "name");
+  const spec: HotelSearchSpec = { ...((li.searchSpec ?? {}) as HotelSearchSpec), pinned: name ? { name } : undefined };
+  await prisma.lineItem.update({ where: { id: li.id }, data: { searchSpec: spec as Prisma.InputJsonValue } });
+  refresh(li.tripId);
 }
 
 export async function deleteTrip(f: FormData) {

@@ -22,6 +22,15 @@ describe("SerpApi Google Hotels", () => {
     expect(offers[1]).toMatchObject({ total: 4080, pricePerNight: 1020, stars: 3, refundable: false });
   });
 
+  it("rental searches keep only rentals and skip star classes", () => {
+    const rq = { ...q, lodging: "rentals" as const };
+    expect(parseSerpHotels(fixture, rq).map((o) => o.name)).toEqual(["Condo"]);
+    expect(parseSerpHotels(fixture, rq)[0]).toMatchObject({ total: 600, lodgingType: "vacation rental" });
+    const p = serpHotelParams(rq, "k");
+    expect(p.get("vacation_rentals")).toBe("true");
+    expect(p.get("hotel_class")).toBeNull();
+  });
+
   it("asks for free cancellation and 3★+", () => {
     const p = serpHotelParams(q, "k");
     expect(p.get("engine")).toBe("google_hotels");

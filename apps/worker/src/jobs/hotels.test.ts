@@ -11,7 +11,7 @@ const prisma = url ? new PrismaClient({ datasources: { db: { url } } }) : (null 
 class FakeHotels implements HotelProvider {
   info = { name: "fake_hotels", tier: "free" as const, configured: true, envKeys: [] };
   queries: HotelQuery[] = [];
-  constructor(private prices: Record<string, number>) {}
+  constructor(private prices: Record<string, number>, private at: Date) {}
   async search(q: HotelQuery): Promise<ProviderResult<HotelOffer>> {
     this.queries.push(q);
     const baseline = q.checkIn > "2027-04-01";
@@ -21,7 +21,7 @@ class FakeHotels implements HotelProvider {
     const offers = baseline
       ? [mk("Normal Week Hotel", 640)]
       : [mk("Hotel A", this.prices.A), mk("Hotel B", this.prices.B), mk("Dive", 300, { stars: 2 }), mk("Hotel C", this.prices.C), mk("Hotel D", 3000)];
-    return { ok: true, provider: "fake", cached: false, fetchedAt: new Date(), raw: { q }, offers };
+    return { ok: true, provider: "fake", cached: false, fetchedAt: this.at, raw: { q }, offers };
   }
 }
 
@@ -44,10 +44,13 @@ describe.skipIf(!url)("hotel job", () => {
   afterAll(() => prisma.$disconnect());
 
   it("prices the exact nights near the venue, keeps the top 3, sets per-night quote and surge baseline", async () => {
-    const fake = new FakeHotels({ A: 1600, B: 1400, C: 1500 });
+    const fake = new FakeHotels({ A: 1600, B: 1400, C: 1500 }, now);
     const r = await runHotelJob(prisma, fake, { budget: 5, now, log: () => {} });
     expect(fake.queries[0]).toMatchObject({ location: "hotels near Bayfront Park, Miami", checkIn: "2027-03-25", checkOut: "2027-03-29" });
-    expect(r.snapshots).toBe(4); // 3 options + 1 baseline
+    // Chosen nights first (3 tiers), the baseline, then 3 more date cards × 3 tiers.
+    expect(r.snapshots).toBe(13);
+    const tiers = await prisma.priceSnapshot.findMany({ where: { lineItemId: itemId, outboundDate: day("2027-03-25"), returnDate: day("2027-03-29") } });
+    expect(tiers.map((t) => t.tier).sort()).toEqual(["cheapest", "rated", "value"]);
     const li = await prisma.lineItem.findUniqueOrThrow({ where: { id: itemId } });
     expect(li.qty).toBe(4);
     expect(Number(li.quotedAmount)).toBe(350); // Hotel B 1400 / 4 nights
@@ -61,18 +64,18 @@ describe.skipIf(!url)("hotel job", () => {
       data: { bookedAmount: 350, booking: { hotelName: "Hotel B", stars: 4, rating5: 4.3, refundable: true, cancelBy: "2027-03-20" } },
     });
     const later = new Date("2026-10-23T12:00:00Z");
-    const r = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1250, C: 1500 }), { budget: 5, now: later, log: () => {} });
+    const r = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1250, C: 1500 }, later), { budget: 5, now: later, log: () => {} });
     expect(r.alerts).toBe(1);
     const alert = await prisma.alert.findFirstOrThrow({ where: { kind: "rebook" } });
     expect(Number(alert.amount)).toBe(150);
     expect(alert.body).toContain("before 2027-03-20");
     // Same result next day: no duplicate alert.
-    const again = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1250, C: 1500 }), { budget: 5, now: new Date("2026-10-24T12:00:00Z"), log: () => {} });
+    const again = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1250, C: 1500 }, new Date("2026-10-24T12:00:00Z")), { budget: 5, now: new Date("2026-10-24T12:00:00Z"), log: () => {} });
     expect(again.alerts).toBe(0);
     // A bigger drop replaces the open alert; a smaller one doesn't add another.
-    const bigger = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1100, C: 1500 }), { budget: 5, now: new Date("2026-10-25T12:00:00Z"), log: () => {} });
+    const bigger = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1100, C: 1500 }, new Date("2026-10-25T12:00:00Z")), { budget: 5, now: new Date("2026-10-25T12:00:00Z"), log: () => {} });
     expect(bigger.alerts).toBe(1);
-    const smaller = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1200, C: 1500 }), { budget: 5, now: new Date("2026-10-26T12:00:00Z"), log: () => {} });
+    const smaller = await runHotelJob(prisma, new FakeHotels({ A: 1600, B: 1200, C: 1500 }, new Date("2026-10-26T12:00:00Z")), { budget: 5, now: new Date("2026-10-26T12:00:00Z"), log: () => {} });
     expect(smaller.alerts).toBe(0);
     const open = await prisma.alert.findMany({ where: { dismissedAt: null } });
     expect(open.map((a) => Number(a.amount))).toEqual([300]);
@@ -80,9 +83,10 @@ describe.skipIf(!url)("hotel job", () => {
 
   it("ignores snapshots for old dates after the trip moves", async () => {
     const trip = await prisma.trip.findFirstOrThrow();
-    await prisma.trip.update({ where: { id: trip.id }, data: { departDate: day("2027-03-30") } });
+    // Outside every date card (± 2 days), so nothing was ever priced for these nights.
+    await prisma.trip.update({ where: { id: trip.id }, data: { departDate: day("2027-04-02") } });
     await prisma.lineItem.update({ where: { id: itemId }, data: { quotedAmount: null, bookedAmount: null, booking: undefined } });
-    const { refreshLineItemQuote } = await import("./quotes");
+    const { refreshLineItemQuote } = await import("@rave-run/db");
     await refreshLineItemQuote(prisma, itemId, new Date("2026-10-24T13:00:00Z"));
     const li = await prisma.lineItem.findUniqueOrThrow({ where: { id: itemId } });
     expect(li.quotedAmount).toBeNull();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultHotelLocation, eligibleHotels, planHotelQueries, rebookCandidate, type HotelOffer } from "./index";
+import { defaultHotelLocation, eligibleHotels, findPinnedHotel, hotelFetchKey, pickHotelTiers, planHotelQueries, rebookCandidate, type HotelOffer } from "./index";
 
 const offer = (name: string, total: number, extra: Partial<HotelOffer> = {}): HotelOffer => ({
   provider: "t", name, total, pricePerNight: total / 4, currency: "USD", stars: 4, rating5: 4.3, refundable: true, ...extra,
@@ -19,6 +19,27 @@ describe("eligibleHotels", () => {
       { minStars: 3, minRating10: 8 },
     );
     expect(out.map((o) => o.name)).toEqual(["Good A", "Unknown stars", "Good B"]);
+  });
+});
+
+describe("hotel tiers", () => {
+  it("picks cheapest, best value (within 25%) and best rated", () => {
+    const t = pickHotelTiers([
+      offer("Cheap", 1000, { rating5: 4.0 }),
+      offer("Value", 1200, { rating5: 4.5 }),
+      offer("Pricey value", 1300, { rating5: 4.6 }),
+      offer("Luxury", 2400, { rating5: 4.8 }),
+    ]);
+    expect(t.cheapest?.name).toBe("Cheap");
+    expect(t.value?.name).toBe("Value"); // 1300 is over 1.25 × 1000
+    expect(t.rated?.name).toBe("Luxury");
+    expect(pickHotelTiers([])).toEqual({});
+  });
+  it("finds a pinned hotel by name", () => {
+    const offers = [offer("The Elser Hotel & Residences", 1500), offer("EAST Miami", 1700)];
+    expect(findPinnedHotel(offers, "east miami")?.name).toBe("EAST Miami");
+    expect(findPinnedHotel(offers, "Elser Hotel")?.name).toBe("The Elser Hotel & Residences");
+    expect(findPinnedHotel(offers, "Four Seasons")).toBeNull();
   });
 });
 
@@ -42,23 +63,43 @@ describe("rebookCandidate", () => {
 });
 
 describe("hotel planner", () => {
-  const base = { location: "hotels near Bayfront Park, Miami", window: { arrive: "2027-03-25", depart: "2027-03-29" }, isPeak: () => false };
-  it("plans the stay plus a weekly baseline, and skips fresh items", () => {
-    const now = new Date("2026-10-22T12:00:00Z");
-    const plan = planHotelQueries([{ ...base, lineItemId: "a", lastFetched: {} }], { today: "2026-10-22", now, budget: 10, minStars: 3 });
-    expect(plan.map((p) => p.variant)).toEqual(["base", "baseline"]);
-    expect(plan[0].query).toMatchObject({ checkIn: "2027-03-25", checkOut: "2027-03-29", refundableOnly: true });
-    expect(plan[1].query.checkIn).toBe("2027-04-15");
-    const fresh = planHotelQueries(
-      [{ ...base, lineItemId: "a", lastFetched: { base: new Date("2026-10-22T08:00:00Z"), baseline: new Date("2026-10-20T08:00:00Z") } }],
-      { today: "2026-10-22", now, budget: 10, minStars: 3 },
+  const w = { arrive: "2027-03-25", depart: "2027-03-29" };
+  const base = {
+    location: "hotels near Bayfront Park, Miami",
+    city: "Miami",
+    anchor: w,
+    chosen: w,
+    flexDays: 1,
+    event: { start: "2027-03-26", end: "2027-03-28" },
+    isPeak: () => false,
+  };
+  const now = new Date("2026-10-22T12:00:00Z");
+
+  it("plans every date card's nights, chosen dates first, plus a weekly baseline", () => {
+    const plan = planHotelQueries([{ ...base, lineItemId: "a", lastFetched: {} }], { today: "2026-10-22", now, budget: 50, minStars: 3 });
+    // flex ±1: arrive Mar 24–26 × depart Mar 29–30 → 6 windows, plus baseline
+    expect(plan.filter((p) => !p.isBaseline)).toHaveLength(6);
+    expect(plan[0]).toMatchObject({ variant: "base", search: "list" });
+    expect(plan[0].query).toMatchObject({ checkIn: "2027-03-25", checkOut: "2027-03-29", refundableOnly: true, lodging: "hotels" });
+    expect(plan.find((p) => p.isBaseline)?.query.checkIn).toBe("2027-04-15");
+  });
+
+  it("adds pinned-hotel and rental searches, and skips fresh ones", () => {
+    const plan = planHotelQueries(
+      [{ ...base, lineItemId: "a", pinnedName: "Hotel X", includeRentals: true, lastFetched: { [hotelFetchKey("2027-03-25", "2027-03-29", "list")]: new Date("2026-10-22T08:00:00Z") } }],
+      { today: "2026-10-22", now, budget: 50, minStars: 3 },
     );
-    expect(fresh).toHaveLength(0);
+    const baseRuns = plan.filter((p) => p.variant === "base");
+    expect(baseRuns.map((p) => p.search).sort()).toEqual(["pinned", "rental"]);
+    expect(baseRuns.find((p) => p.search === "pinned")?.query.location).toBe("Hotel X, Miami");
+    expect(baseRuns.find((p) => p.search === "rental")?.query.lodging).toBe("rentals");
   });
-  it("doesn't baseline booked stays (only watches them for rebooks)", () => {
-    const plan = planHotelQueries([{ ...base, lineItemId: "a", lastFetched: {}, watchingBooked: true }], { today: "2026-10-22", budget: 10, minStars: 3 });
-    expect(plan.map((p) => p.variant)).toEqual(["base"]);
+
+  it("only watches the booked nights for booked stays", () => {
+    const plan = planHotelQueries([{ ...base, lineItemId: "a", lastFetched: {}, watchingBooked: true, includeRentals: true }], { today: "2026-10-22", now, budget: 50, minStars: 3 });
+    expect(plan.map((p) => `${p.variant}:${p.search}`)).toEqual(["base:list"]);
   });
+
   it("builds a default location", () => {
     expect(defaultHotelLocation({ venue: "Bayfront Park", city: "Miami" })).toBe("hotels near Bayfront Park, Miami");
     expect(defaultHotelLocation({ venue: "TBA", city: "Brooklyn" })).toBe("hotels in Brooklyn");

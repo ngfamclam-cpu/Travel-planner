@@ -48,8 +48,13 @@ export function serpHotelParams(q: HotelQuery, apiKey: string): URLSearchParams 
     sort_by: "3", // lowest price
     api_key: apiKey,
   });
-  const classes = [2, 3, 4, 5].filter((c) => c >= Math.ceil(q.minStars));
-  if (classes.length && classes.length < 4) p.set("hotel_class", classes.join(","));
+  if (q.lodging === "rentals") {
+    // Google's vacation rentals (Airbnb/VRBO-style listings): no star classes.
+    p.set("vacation_rentals", "true");
+  } else {
+    const classes = [2, 3, 4, 5].filter((c) => c >= Math.ceil(q.minStars));
+    if (classes.length && classes.length < 4) p.set("hotel_class", classes.join(","));
+  }
   if (q.refundableOnly) p.set("free_cancellation", "true");
   return p;
 }
@@ -77,7 +82,9 @@ export function parseSerpHotels(json: SerpHotelsResponse, q: HotelQuery): HotelO
   const offers: HotelOffer[] = [];
   for (const p of json.properties ?? []) {
     if (!p.name) continue;
-    if (p.type && p.type !== "hotel") continue; // skip vacation rentals
+    // Hotel searches skip rentals; rental searches keep only rentals.
+    const isRental = !!p.type && p.type !== "hotel";
+    if (isRental !== (q.lodging === "rentals")) continue;
     const perNight = amount(p.rate_per_night);
     const total = amount(p.total_rate) ?? (perNight != null ? perNight * n : undefined);
     if (total == null) continue;
@@ -90,6 +97,7 @@ export function parseSerpHotels(json: SerpHotelsResponse, q: HotelQuery): HotelO
       stars: stars(p),
       rating5: p.overall_rating,
       reviews: p.reviews,
+      lodgingType: isRental ? p.type : undefined,
       // Searches use Google's free-cancellation filter; a property flag wins if present.
       refundable: p.free_cancellation ?? (q.refundableOnly ? true : undefined),
       lat: p.gps_coordinates?.latitude,

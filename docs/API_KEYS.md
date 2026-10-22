@@ -26,6 +26,8 @@ Prices, quotas and signup flows change, so check each provider's page as you sig
 5. In the app: **Settings → SerpApi searches / month**: enter the number your dashboard shows. The worker spreads that across the month: 60% for flights, 40% for hotels.
 6. Test it on the server: `docker compose exec worker npm run worker:once`, then open **Keys** in the app. You should see a successful flight run and a successful hotel run.
 
+**Date cards need the paid plan:** every date card gets its own real hotel search. On the free tier, cards fill in slowly over days, with the chosen dates first. On the $25 plan most cards refresh daily.
+
 **How far the free tier goes:** each search covers all 6 Boston-area airports and every destination airport at once. With ~10 trips that need flights, the free tier refreshes each trip's base dates every few days, plus some ±1–2 day variants. The **$25/month** plan (1,000 searches) covers daily checks with variants. The savings meter (step 10) will tell you if it's worth it.
 
 **If flight runs fail with an airport error:** set `SERPAPI_COMBINE_AIRPORTS=0`. The app then searches each airport pair separately, which is reliable but uses more quota (so you may want to untick NYC airports in Settings).

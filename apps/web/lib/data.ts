@@ -1,7 +1,12 @@
 // Server-side data access. Converts Prisma Decimals/Dates into plain values for rendering.
 import {
   addDays,
+  buildDateCards,
+  cheapestTicket,
   computeSurge,
+  lineTotal,
+  sortCards,
+  todayIn,
   defaultHotelLocation,
   destinationFromAirports,
   findClashes,
@@ -16,12 +21,17 @@ import {
   type FlightSearchSpec,
   type HotelBooking,
   type HotelSearchSpec,
+  type HotelTier,
+  type CardPrice,
+  type DateCard,
+  type FlightSnap,
+  type HotelSnap,
   type SeasonalTrap,
   type Surge,
   type TripLike,
   type TripTotals,
 } from "@rave-run/core";
-import { prisma, type Prisma } from "@rave-run/db";
+import { prisma, type ChosenOption, type Prisma } from "@rave-run/db";
 
 const num = (d: Prisma.Decimal | null | undefined) => (d == null ? null : Number(d));
 
@@ -47,7 +57,10 @@ export interface SparkPoint {
   price: number;
 }
 
+const TIER_ORDER: HotelTier[] = ["cheapest", "value", "rated", "pinned", "rental"];
+
 export interface HotelOption {
+  tier: HotelTier;
   name: string;
   total: number;
   perNight: number;
@@ -75,7 +88,14 @@ export interface LineItemView {
   notes: string | null;
   cardName: string | null;
   searchSpec: FlightSearchSpec | null;
-  hotel: { location: string | null; customLocation: string | null; booking: HotelBooking | null; options: HotelOption[] } | null;
+  hotel: {
+    location: string | null;
+    customLocation: string | null;
+    booking: HotelBooking | null;
+    pinnedName: string | null;
+    includeRentals: boolean;
+    options: HotelOption[];
+  } | null;
   spark: SparkPoint[];
   latestSnapshot: { origin: string | null; carrier: string | null; stops: number | null; variant: string | null; fetchedAt: Date } | null;
 }
@@ -128,8 +148,13 @@ function toView(t: TripRow, all: TripLike[]): TripView {
     const snaps = li.snapshots.filter((s) => matchesDates(s, li.kind, arrive, depart, t.flexDays));
     const latest = snaps.at(-1);
     const hotelSpec = li.kind === "hotel" ? ((li.searchSpec ?? {}) as HotelSearchSpec) : null;
-    // Options from the most recent hotel fetch, cheapest first.
-    const batch = latest && li.kind === "hotel" ? snaps.filter((s) => s.fetchedAt.getTime() === latest.fetchedAt.getTime()) : [];
+    // Hotel options for the current nights: the latest row per tier.
+    const batch: SnapRow[] = [];
+    if (li.kind === "hotel") {
+      for (const s of [...snaps].reverse()) {
+        if (s.tier && !batch.some((b) => b.tier === s.tier)) batch.push(s);
+      }
+    }
     return {
       id: li.id,
       kind: li.kind,
@@ -154,9 +179,12 @@ function toView(t: TripRow, all: TripLike[]): TripView {
             location: hotelSpec.query || defaultHotelLocation(t.event),
             customLocation: hotelSpec.query ?? null,
             booking: (li.booking as HotelBooking | null) ?? null,
+            pinnedName: hotelSpec.pinned?.name ?? null,
+            includeRentals: !!hotelSpec.includeRentals,
             options: batch
-              .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+              .sort((a, b) => TIER_ORDER.indexOf(a.tier as HotelTier) - TIER_ORDER.indexOf(b.tier as HotelTier))
               .map((s) => ({
+                tier: s.tier as HotelTier,
                 name: s.hotelName ?? "hotel",
                 total: Number(s.totalPrice),
                 perNight: Number(s.price),
@@ -247,4 +275,103 @@ export async function openAlerts(tripId?: string) {
     orderBy: { createdAt: "desc" },
     take: 50,
   });
+}
+
+export interface TripCards {
+  tier: HotelTier;
+  /** The hotel pick saved on the trip (the tier view can differ). */
+  savedTier: HotelTier;
+  tiers: HotelTier[];
+  cards: { card: DateCard; price: CardPrice }[];
+  cheapestTotal: number | null;
+}
+
+/** Date cards for a trip (Google Flights-style), priced with the given hotel pick. */
+export async function tripDateCards(tripId: string, requestedTier?: string): Promise<TripCards | null> {
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: {
+      event: { include: { ticketTiers: true } },
+      lineItems: { include: { snapshots: { where: { isBaseline: false }, orderBy: { fetchedAt: "desc" }, take: 2000 } } },
+    },
+  });
+  if (!trip) return null;
+  const chosenOpt = (trip.chosenOption ?? {}) as ChosenOption;
+  const chosen = { arrive: toISODate(trip.arriveDate), depart: toISODate(trip.departDate) };
+  const anchor = chosenOpt.anchor ?? chosen;
+  const flightItem = trip.lineItems.find((l) => l.kind === "flight" && (l.searchSpec as FlightSearchSpec | null)?.destinations?.length);
+  const hotelItem = trip.lineItems.find((l) => l.kind === "hotel");
+  const hotelSpec = (hotelItem?.searchSpec ?? {}) as HotelSearchSpec;
+  const tiers: HotelTier[] = ["cheapest", "value", "rated", ...(hotelSpec.pinned ? (["pinned"] as const) : []), ...(hotelSpec.includeRentals ? (["rental"] as const) : [])];
+  const tier = (tiers as string[]).includes(requestedTier ?? "") ? (requestedTier as HotelTier) : chosenOpt.hotelTier && tiers.includes(chosenOpt.hotelTier) ? chosenOpt.hotelTier : "cheapest";
+
+  const d = (x: Date | null) => (x ? toISODate(x) : "");
+  const flights: FlightSnap[] = (flightItem?.snapshots ?? []).map((s) => ({
+    arrive: d(s.outboundDate),
+    depart: d(s.returnDate),
+    total: Number(s.totalPrice),
+    positioningCost: Number(s.positioningCost),
+    origin: s.origin,
+    carrier: s.carrier,
+    stops: s.stops,
+    insight: s.insightLabel,
+    url: s.bookingUrl,
+    fetchedAt: s.fetchedAt,
+  }));
+  const hotels: HotelSnap[] = (hotelItem?.snapshots ?? [])
+    .filter((s) => s.tier)
+    .map((s) => ({
+      arrive: d(s.outboundDate),
+      depart: d(s.returnDate),
+      tier: s.tier as HotelTier,
+      name: s.hotelName ?? "hotel",
+      total: Number(s.totalPrice),
+      perNight: Number(s.price),
+      stars: s.stars,
+      rating5: s.rating,
+      refundable: s.refundable,
+      url: s.bookingUrl,
+      fetchedAt: s.fetchedAt,
+    }));
+
+  // Ticket: cheapest available tier, else the ticket line item(s).
+  let ticket = cheapestTicket(
+    (trip.event?.ticketTiers ?? []).map((t) => ({
+      name: t.name,
+      price: num(t.priceAllIn),
+      onSale: t.onSale,
+      soldOut: t.soldOut,
+      isResale: t.isResale,
+      source: t.source,
+    })),
+  );
+  const ticketItems = trip.lineItems.filter((l) => l.kind === "ticket");
+  if (!ticket) {
+    const sum = ticketItems.reduce((a, l) => a + (lineTotal({ estAmount: num(l.estAmount), quotedAmount: num(l.quotedAmount), bookedAmount: num(l.bookedAmount), qty: l.qty }) ?? 0), 0);
+    if (sum > 0) ticket = { label: ticketItems.map((l) => l.label).join(" + "), price: sum, source: "line item", resale: false, others: [] };
+  }
+  const fixedCosts = trip.lineItems
+    .filter((l) => !["flight", "hotel", "ticket"].includes(l.kind))
+    .reduce((a, l) => a + (lineTotal({ estAmount: num(l.estAmount), quotedAmount: num(l.quotedAmount), bookedAmount: num(l.bookedAmount), qty: l.qty }) ?? 0), 0);
+
+  const ev = trip.event;
+  const evStart = ev ? toISODate(ev.startDate) : undefined;
+  const evEnd = ev ? toISODate(ev.endDate) : undefined;
+  const cards = buildDateCards({
+    anchor,
+    chosen,
+    flexDays: trip.flexDays,
+    event: evStart && evEnd && anchor.arrive <= evStart && anchor.depart >= evEnd ? { start: evStart, end: evEnd } : undefined,
+    today: todayIn(),
+    needsFlight: !!flightItem,
+    needsHotel: !!hotelItem,
+    hotelEstPerNight: num(hotelItem?.estAmount),
+    flights,
+    hotels,
+    ticket,
+    fixedCosts,
+  });
+  const sorted = sortCards(cards, tier);
+  const complete = sorted.filter((s) => s.price.complete && !s.price.estimated);
+  return { tier, savedTier: chosenOpt.hotelTier ?? "cheapest", tiers, cards: sorted, cheapestTotal: complete[0]?.price.total ?? null };
 }

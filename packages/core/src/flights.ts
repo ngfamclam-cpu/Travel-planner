@@ -1,6 +1,6 @@
 // Flight query types and the daily query planner (spec §3, §5).
 import { diffDays, parseISODate, type ISODate } from "./dates";
-import { baselineWindow, dateVariants, type DateVariant, type TravelWindow } from "./windows";
+import { baselineWindow, dateVariants, variantLabel, type DateVariant, type TravelWindow } from "./windows";
 
 export interface FlightQuery {
   origins: string[]; // searched together, e.g. ["BOS","PVD","MHT","JFK","EWR","LGA"]
@@ -57,7 +57,10 @@ export function googleFlightsUrl(q: Pick<FlightQuery, "origins" | "destinations"
 export interface PlannerItem {
   lineItemId: string;
   spec: FlightSearchSpec;
+  /** Date cards are built around this window (± flex). */
   window: TravelWindow;
+  /** The trip's chosen dates, always searched first (defaults to the window). */
+  chosen?: TravelWindow;
   flexDays: number;
   event?: { start: ISODate; end: ISODate };
   /** Last fetch time per variant label ("base", "-1/+1", "baseline"). */
@@ -95,11 +98,12 @@ function variantWeight(v: DateVariant): number {
 export function planFlightQueries(items: PlannerItem[], opts: PlanOptions): PlannedQuery[] {
   const now = opts.now ?? new Date();
   const minHours = opts.minHoursBetween ?? 20;
-  const maxVariants = opts.maxVariantsPerItem ?? 9;
+  const maxVariants = opts.maxVariantsPerItem ?? 25;
   const candidates: PlannedQuery[] = [];
 
   for (const item of items) {
-    const daysOut = diffDays(opts.today, item.window.arrive);
+    const chosen = item.chosen ?? item.window;
+    const daysOut = diffDays(opts.today, chosen.arrive);
     if (daysOut < 0) continue; // trip already started
     const urgency = daysOut <= 21 ? 2 : daysOut <= 60 ? 1.5 : daysOut <= 150 ? 1 : 0.6;
     const origins = item.spec.origins?.length ? item.spec.origins : opts.defaultOrigins;
@@ -122,6 +126,10 @@ export function planFlightQueries(items: PlannerItem[], opts: PlanOptions): Plan
     const variants = dateVariants(item.window, item.flexDays, item.event)
       .filter((v) => diffDays(opts.today, v.arrive) >= 0)
       .slice(0, maxVariants);
+    const chosenLabel = variantLabel(diffDays(item.window.arrive, chosen.arrive), diffDays(item.window.depart, chosen.depart));
+    if (!variants.some((v) => v.label === chosenLabel)) {
+      variants.unshift({ ...chosen, label: chosenLabel, outShift: 0, retShift: 0 });
+    }
     for (const v of variants) {
       const st = staleness(v.label);
       if (st.skip) continue;
@@ -130,7 +138,7 @@ export function planFlightQueries(items: PlannerItem[], opts: PlanOptions): Plan
         variant: v.label,
         isBaseline: false,
         query: mk(v),
-        priority: variantWeight(v) * urgency + st.bonus,
+        priority: (v.label === chosenLabel ? 110 : variantWeight(v)) * urgency + st.bonus,
       });
     }
 
@@ -142,7 +150,7 @@ export function planFlightQueries(items: PlannerItem[], opts: PlanOptions): Plan
         lineItemId: item.lineItemId,
         variant: "baseline",
         isBaseline: true,
-        query: mk(baselineWindow(item.window, item.isPeak)),
+        query: mk(baselineWindow(chosen, item.isPeak)),
         priority: lastBase ? 35 : 70,
       });
     }

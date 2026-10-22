@@ -4,7 +4,10 @@ import {
   defaultHotelLocation,
   destinationFromAirports,
   eligibleHotels,
+  findPinnedHotel,
+  hotelFetchKey,
   isPeakWindow,
+  pickHotelTiers,
   planHotelQueries,
   rebookCandidate,
   todayIn,
@@ -15,18 +18,17 @@ import {
   type HotelOffer,
   type HotelPlannerItem,
   type HotelSearchSpec,
+  type HotelTier,
 } from "@rave-run/core";
 import type { Prisma, PrismaClient } from "@rave-run/db";
 import type { HotelProvider } from "@rave-run/providers";
 import { loadSettings } from "../settings";
-import { refreshLineItemQuote } from "./quotes";
+import { refreshLineItemQuote, type ChosenOption } from "@rave-run/db";
 
 export interface HotelJobOptions {
   now?: Date;
   pauseMs?: number;
   budget?: number;
-  /** How many qualifying hotels to keep per search (shown as alternatives). */
-  keepTop?: number;
   log?: (msg: string) => void;
 }
 
@@ -48,7 +50,6 @@ export async function runHotelJob(prisma: PrismaClient, provider: HotelProvider,
   const today = todayIn("America/New_York", now);
   const settings = await loadSettings(prisma);
   const name = provider.info.name;
-  const keepTop = opts.keepTop ?? 3;
 
   if (!provider.info.configured) {
     const error = `${provider.info.envKeys.join(", ")} not set`;
@@ -86,12 +87,34 @@ export async function runHotelJob(prisma: PrismaClient, provider: HotelProvider,
     const airports = li.trip.lineItems.flatMap((f) => (f.searchSpec as FlightSearchSpec | null)?.destinations ?? []);
     const ev = li.trip.event;
     const dest: Destination = ev ? { country: ev.country, city: ev.city, airports } : destinationFromAirports(airports);
-    const last = await prisma.priceSnapshot.groupBy({ by: ["variant"], where: { lineItemId: li.id }, _max: { fetchedAt: true } });
+    const snaps = await prisma.priceSnapshot.findMany({
+      where: { lineItemId: li.id },
+      select: { outboundDate: true, returnDate: true, isBaseline: true, tier: true, fetchedAt: true },
+      orderBy: { fetchedAt: "desc" },
+      take: 400,
+    });
+    const lastFetched: Record<string, Date | undefined> = {};
+    for (const s of snaps) {
+      const key = s.isBaseline
+        ? "baseline"
+        : hotelFetchKey(toISODate(s.outboundDate!), toISODate(s.returnDate!), s.tier === "pinned" ? "pinned" : s.tier === "rental" ? "rental" : "list");
+      lastFetched[key] ??= s.fetchedAt;
+    }
+    const chosen = { arrive: toISODate(li.trip.arriveDate), depart: toISODate(li.trip.departDate) };
+    const anchor = ((li.trip.chosenOption ?? {}) as ChosenOption).anchor ?? chosen;
+    const evStart = ev ? toISODate(ev.startDate) : undefined;
+    const evEnd = ev ? toISODate(ev.endDate) : undefined;
     plannerItems.push({
       lineItemId: li.id,
       location,
-      window: { arrive: toISODate(li.trip.arriveDate), depart: toISODate(li.trip.departDate) },
-      lastFetched: Object.fromEntries(last.map((r) => [r.variant ?? "base", r._max.fetchedAt ?? undefined])),
+      city: ev?.city,
+      pinnedName: spec.pinned?.name,
+      includeRentals: spec.includeRentals,
+      anchor,
+      chosen,
+      flexDays: li.trip.flexDays,
+      event: evStart && evEnd && anchor.arrive <= evStart && anchor.depart >= evEnd ? { start: evStart, end: evEnd } : undefined,
+      lastFetched,
       isPeak: (w) => isPeakWindow({ start: w.arrive, end: w.depart }, dest),
       watchingBooked: booked,
     });
@@ -112,14 +135,34 @@ export async function runHotelJob(prisma: PrismaClient, provider: HotelProvider,
       continue;
     }
     if (!res.cached) quotaSpent++;
-    const good = eligibleHotels(res.offers, { minStars: settings.hotelMinStars, minRating10: settings.hotelMinRating10 });
-    if (!good.length) {
-      failures.push(`${pq.query.location} ${pq.query.checkIn}: no refundable ${settings.hotelMinStars}★+ hotels rated ${settings.hotelMinRating10 / 2}+/5`);
+    const floors = { minStars: pq.search === "list" ? settings.hotelMinStars : 0, minRating10: settings.hotelMinRating10 };
+    const good = eligibleHotels(res.offers, floors);
+
+    // What to store for this search: the three list tiers, the pinned hotel, or the cheapest rental.
+    const picks: [HotelTier | null, HotelOffer][] = [];
+    if (pq.isBaseline) {
+      if (good[0]) picks.push([null, good[0]]);
+    } else if (pq.search === "list") {
+      const tiers = pickHotelTiers(good);
+      for (const t of ["cheapest", "value", "rated"] as const) if (tiers[t]) picks.push([t, tiers[t]!]);
+    } else if (pq.search === "pinned") {
+      const name = plannerItems.find((p) => p.lineItemId === pq.lineItemId)?.pinnedName ?? "";
+      const hit = findPinnedHotel(res.offers.filter((o) => o.refundable !== false), name);
+      if (hit) picks.push(["pinned", hit]);
+    } else if (good[0]) {
+      picks.push(["rental", good[0]]);
+    }
+    if (!picks.length) {
+      const what = pq.search === "pinned" ? "your hotel had no free-cancellation rate" : pq.search === "rental" ? "no rentals met the rating floor" : `no refundable ${settings.hotelMinStars}★+ hotels rated ${settings.hotelMinRating10 / 2}+/5`;
+      failures.push(`${pq.query.location} ${pq.query.checkIn}→${pq.query.checkOut}: ${what}`);
       continue;
     }
-    if (!pq.isBaseline) offersByItem.set(pq.lineItemId, good);
-    const keep = pq.isBaseline ? good.slice(0, 1) : good.slice(0, keepTop);
-    for (const [rank, o] of keep.entries()) {
+
+    const li = items.find((i) => i.id === pq.lineItemId);
+    const isTripNights = li && pq.query.checkIn === toISODate(li.trip.arriveDate) && pq.query.checkOut === toISODate(li.trip.departDate);
+    if (!pq.isBaseline && pq.search === "list" && isTripNights) offersByItem.set(pq.lineItemId, good);
+
+    for (const [rank, [tier, o]] of picks.entries()) {
       await prisma.priceSnapshot.create({
         data: {
           lineItemId: pq.lineItemId,
@@ -137,9 +180,10 @@ export async function runHotelJob(prisma: PrismaClient, provider: HotelProvider,
           rating: o.rating5,
           refundable: o.refundable,
           rank,
+          tier,
           bookingUrl: o.bookingUrl ?? res.searchUrl,
           fetchedAt: res.fetchedAt,
-          // Full payload on the top result only, to keep rows small.
+          // Full payload on the first row only, to keep rows small.
           raw: (rank === 0 ? res.raw : o.raw) as Prisma.InputJsonValue,
         },
       });

@@ -31,7 +31,9 @@ export function variantLabel(outShift: number, retShift: number): string {
 
 /**
  * All ±flex date variants around a base window. When the trip is built around an event,
- * pass the event dates so no variant arrives after the first day or leaves before the last.
+ * pass the event dates: a variant may arrive on day one (early flight) but never later, and
+ * always leaves the day after the last day or later (shows run late, so leaving on the
+ * last day means missing it).
  * Variants are sorted by how far they move from the base (base first).
  */
 export function dateVariants(
@@ -46,7 +48,7 @@ export function dateVariants(
       const arrive = addDays(base.arrive, o);
       const depart = addDays(base.depart, r);
       if (depart <= arrive) continue;
-      if (event && (arrive > event.start || depart < event.end)) continue;
+      if (event && (arrive > event.start || depart <= event.end)) continue;
       out.push({ arrive, depart, outShift: o, retShift: r, label: variantLabel(o, r) });
     }
   }

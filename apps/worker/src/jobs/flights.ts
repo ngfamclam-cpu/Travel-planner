@@ -16,7 +16,7 @@ import {
 import type { Prisma, PrismaClient } from "@rave-run/db";
 import type { FlightProvider } from "@rave-run/providers";
 import { loadSettings } from "../settings";
-import { refreshLineItemQuote } from "./quotes";
+import { refreshLineItemQuote, type ChosenOption } from "@rave-run/db";
 
 export interface FlightJobOptions {
   now?: Date;
@@ -83,14 +83,17 @@ export async function runFlightJob(prisma: PrismaClient, provider: FlightProvide
     const dest: Destination = ev
       ? { country: ev.country, city: ev.city, airports: spec.destinations }
       : destinationFromAirports(spec.destinations);
-    const arrive = toISODate(li.trip.arriveDate);
-    const depart = toISODate(li.trip.departDate);
+    const chosen = { arrive: toISODate(li.trip.arriveDate), depart: toISODate(li.trip.departDate) };
+    // Cards stay anchored to the window they were first built around.
+    const anchor = ((li.trip.chosenOption ?? {}) as ChosenOption).anchor ?? chosen;
+    const { arrive, depart } = anchor;
     const evStart = ev ? toISODate(ev.startDate) : undefined;
     const evEnd = ev ? toISODate(ev.endDate) : undefined;
     plannerItems.push({
       lineItemId: li.id,
       spec,
-      window: { arrive, depart },
+      window: anchor,
+      chosen,
       flexDays: li.trip.flexDays,
       // Only constrain variants by the event when the trip actually covers it.
       event: evStart && evEnd && arrive <= evStart && depart >= evEnd ? { start: evStart, end: evEnd } : undefined,

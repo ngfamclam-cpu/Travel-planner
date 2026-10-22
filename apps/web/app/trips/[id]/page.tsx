@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { googleFlightsUrl, googleHotelsUrl, searchOrigins, surgeSentence } from "@rave-run/core";
-import { addLineItem, deleteLineItem, deleteTrip, updateLineItem, updateTrip } from "@/app/actions";
+import { HOTEL_TIER_LABEL, googleFlightsUrl, googleHotelsUrl, searchOrigins, surgeSentence } from "@rave-run/core";
+import { addLineItem, deleteLineItem, deleteTrip, pinHotel, updateLineItem, updateTrip } from "@/app/actions";
 import { AlertList } from "@/components/AlertList";
 import { InsightChip, PriceTag, Provenance } from "@/components/PriceTag";
 import { Sparkline } from "@/components/Sparkline";
-import { getCards, getSettings, getTrip, openAlerts, type LineItemView, type TripView } from "@/lib/data";
+import { DateCards } from "@/components/DateCards";
+import { getCards, getSettings, getTrip, openAlerts, tripDateCards, type LineItemView, type TripView } from "@/lib/data";
 import { fmtDay, fmtRange, fmtWhen, usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -46,15 +47,34 @@ function HotelDetails({ li }: { li: LineItemView }) {
       ) : (
         <div><small>Tip: book a refundable rate early. It's re-checked daily and you'll get a rebook alert if it drops.</small></div>
       )}
+      {h.pinnedName && (
+        <div className="row" style={{ marginTop: 4 }}>
+          <small>My hotel: <strong>{h.pinnedName}</strong> (priced on every date card)</small>
+          <form action={pinHotel}>
+            <input type="hidden" name="id" value={li.id} />
+            <input type="hidden" name="name" value="" />
+            <button type="submit" className="ghost" style={{ padding: "2px 8px", fontSize: 12 }}>Unpin</button>
+          </form>
+        </div>
+      )}
+      {h.includeRentals && <div><small>Also checking vacation rentals (Airbnb/VRBO-style listings on Google).</small></div>}
       {h.options.length > 0 && (
         <ul className="options">
-          {h.options.map((o, i) => (
-            <li key={i}>
+          {h.options.map((o) => (
+            <li key={o.tier}>
               <span>
+                <small className="kind">{HOTEL_TIER_LABEL[o.tier]}</small>{" "}
                 {o.url ? <a href={o.url} target="_blank" rel="noreferrer">{o.name}</a> : o.name}{" "}
                 <small>
                   {o.stars ? `${o.stars}★` : ""} {o.rating5 ? `· ${o.rating5}/5` : ""} {o.refundable ? "· free cancel" : ""}
                 </small>
+                {o.tier !== "pinned" && o.tier !== "rental" && o.name !== h.pinnedName && (
+                  <form action={pinHotel} style={{ display: "inline" }}>
+                    <input type="hidden" name="id" value={li.id} />
+                    <input type="hidden" name="name" value={o.name} />
+                    <button type="submit" className="ghost" style={{ padding: "0 6px", fontSize: 11, marginLeft: 4 }}>📌 pin</button>
+                  </form>
+                )}
               </span>
               <span className="num">{usd(o.perNight)}/n · {usd(o.total)}</span>
             </li>
@@ -133,6 +153,13 @@ function LineItem({ t, li, cards, origins }: { t: TripView; li: LineItemView; ca
                 <label>Hotel search area</label>
                 <input name="hotelQuery" defaultValue={li.hotel.customLocation ?? ""} placeholder={li.hotel.location ?? "e.g. hotels in Brickell, Miami"} />
               </div>
+              <div className="wide">
+                <label>My hotel: price a specific hotel on every date card</label>
+                <input name="pinnedHotel" defaultValue={li.hotel.pinnedName ?? ""} placeholder="e.g. EAST Miami" />
+              </div>
+              <div className="wide">
+                <label><input type="checkbox" name="includeRentals" defaultChecked={li.hotel.includeRentals} /> Also check vacation rentals (Airbnb/VRBO-style)</label>
+              </div>
               <fieldset className="wide">
                 <legend>If booked: what you booked (used for rebook alerts)</legend>
                 <div className="fields">
@@ -158,9 +185,10 @@ function LineItem({ t, li, cards, origins }: { t: TripView; li: LineItemView; ca
   );
 }
 
-export default async function TripPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TripPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tier?: string }> }) {
   const { id } = await params;
-  const [t, cards, settings, alerts] = await Promise.all([getTrip(id), getCards(), getSettings(), openAlerts(id)]);
+  const { tier } = await searchParams;
+  const [t, cards, settings, alerts, dateCards] = await Promise.all([getTrip(id), getCards(), getSettings(), openAlerts(id), tripDateCards(id, tier)]);
   if (!t) notFound();
   const origins = searchOrigins(settings);
 
@@ -195,6 +223,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
       </section>
 
       <AlertList alerts={alerts} />
+      {dateCards && dateCards.cards.length > 0 && <DateCards tripId={t.id} data={dateCards} />}
       {t.clashes.map((c) => (
         <div key={c.otherId} className={`alert ${c.kind === "overlap" ? "bad" : "warn"}`}>
           ⚠ {c.message}. <Link href={`/trips/${c.otherId}`}>Open {c.otherName}</Link>
