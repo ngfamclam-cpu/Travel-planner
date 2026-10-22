@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "once": "tsx src/index.ts --once"
+    "once": "tsx src/index.ts --once",
+    "demo": "tsx src/demo.ts --yes"
   },
   "dependencies": {
     "@rave-run/core": "*",

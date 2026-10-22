@@ -52,6 +52,10 @@ Following the build order in the spec:
 
 Hotel nights follow the trip window. Ultra is 4 nights (Mar 25–29) and HiJinx 3 (Dec 29–Jan 1), where the spec's estimates assumed 3 and 2. Edit the qty on the trip page if you'll arrive later.
 
+## Try it
+
+See **[docs/TRY_IT.md](docs/TRY_IT.md)**: Docker or Node, optional fake **DEMO** prices (`npm run demo`), and a checklist of what to test.
+
 ## Run locally
 
 Needs Node 22 and Postgres 16.

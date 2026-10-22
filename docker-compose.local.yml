@@ -1,0 +1,47 @@
+# Try Rave Run on your own computer: http://localhost:3000 (password: raverun unless you set APP_PASSWORD).
+#   docker compose -f docker-compose.local.yml up --build
+# Optional fake prices for testing:
+#   docker compose -f docker-compose.local.yml run --rm worker npm run demo
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: raverun
+      POSTGRES_PASSWORD: raverun
+      POSTGRES_DB: raverun
+    volumes:
+      - pgdata_local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raverun"]
+      interval: 5s
+      retries: 10
+
+  worker:
+    build: { context: ., target: worker }
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://raverun:raverun@postgres:5432/raverun
+      TZ: America/New_York
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://raverun:raverun@postgres:5432/raverun
+      APP_PASSWORD: ${APP_PASSWORD:-raverun}
+      SESSION_SECRET: ${SESSION_SECRET:-local-only-secret-change-me-for-a-real-server}
+      COOKIE_SECURE: "0" # plain http on localhost
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      worker: { condition: service_started }
+
+volumes:
+  pgdata_local:

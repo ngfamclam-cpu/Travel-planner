@@ -34,12 +34,13 @@ function TripBar({ t, max }: { t: TripView; max: number }) {
 }
 
 export default async function Home() {
-  const [trips, settings, health, pointsSetting, alerts] = await Promise.all([
+  const [trips, settings, health, pointsSetting, alerts, demo] = await Promise.all([
     listTrips(),
     getSettings(),
     providerHealth(),
     prisma.setting.findUnique({ where: { key: "pointsUpdatedAt" } }),
     openAlerts(),
+    prisma.setting.findUnique({ where: { key: "demoDataLoadedAt" } }),
   ]);
   const active = trips.filter((t) => t.status !== "done");
   const committed = active.filter((t) => t.status === "planned" || t.status === "booked");
@@ -69,6 +70,12 @@ export default async function Home() {
 
   return (
     <>
+      {demo && (
+        <div className="alert bad">
+          <strong>Demo data loaded:</strong> prices labelled DEMO are fake, for trying the app. Clear them with <code>npm run db:reset</code> (Docker:{" "}
+          <code>docker compose -f docker-compose.local.yml run --rm worker npm run db:reset</code>).
+        </div>
+      )}
       <section className="card">
         <small>Planned + booked trips</small>
         <div className="big num">{usd(grand)}</div>

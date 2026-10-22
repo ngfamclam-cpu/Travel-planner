@@ -13,15 +13,23 @@ const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
 type Snap = Prisma.PriceSnapshotGetPayload<object>;
 
+/** Human label for where a snapshot came from. Anything not from a real provider says so. */
+export function providerLabel(provider: string, kind: string): string {
+  if (provider === "serpapi_google_flights") return "Google Flights via SerpApi";
+  if (provider === "serpapi_google_hotels") return "Google Hotels via SerpApi";
+  if (provider.startsWith("demo")) return "DEMO data (fake, for testing)";
+  return `${kind === "hotel" ? "Hotels" : "Flights"} via ${provider}`;
+}
+
 function describe(s: Snap, kind: string): string {
   if (kind === "hotel") {
     const bits = [s.hotelName, s.stars ? `${s.stars}★` : null, s.rating ? `${s.rating}/5` : null, s.refundable ? "free cancellation" : null].filter(Boolean);
     const tier = s.tier ? `${HOTEL_TIER_LABEL[s.tier as HotelTier] ?? s.tier}: ` : "";
-    return `Google Hotels via SerpApi (${tier}${bits.join(", ")})`;
+    return `${providerLabel(s.provider, kind)} (${tier}${bits.join(", ")})`;
   }
   const pos = Number(s.positioningCost);
   const via = pos > 0 ? ` from ${s.origin} incl. $${pos} positioning` : ` from ${s.origin}`;
-  return `Google Flights via SerpApi (${via.trim()}, ${s.carrier}, ${s.stops === 0 ? "nonstop" : `${s.stops} stop`})`;
+  return `${providerLabel(s.provider, kind)} (${via.trim()}, ${s.carrier}, ${s.stops === 0 ? "nonstop" : `${s.stops} stop`})`;
 }
 
 /**
@@ -75,7 +83,8 @@ export async function refreshTripQuotes(prisma: PrismaClient, tripId: string, no
   for (const li of items) {
     const found = await refreshLineItemQuote(prisma, li.id, now);
     // No price yet for the new dates: clear the old one rather than show a quote for other dates.
-    if (!found && li.quotedAmount != null && li.quotedSource?.includes("via SerpApi")) {
+    // Only clear quotes the worker wrote (hand-entered quotes stay).
+    if (!found && li.quotedAmount != null && li.quotedAt && li.quotedSource && / via |DEMO data/.test(li.quotedSource)) {
       await prisma.lineItem.update({
         where: { id: li.id },
         data: { quotedAmount: null, quotedAt: null, quotedSource: null, quotedUrl: null, insightLabel: null, isEstimate: true },

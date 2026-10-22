@@ -44,7 +44,8 @@ export async function login(_prev: string | null, f: FormData): Promise<string |
   }
   (await cookies()).set(SESSION_COOKIE, await sessionToken(), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // Secure cookies need https; COOKIE_SECURE=0 for plain http on localhost.
+    secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE !== "0" : process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 90,
