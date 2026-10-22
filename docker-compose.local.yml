@@ -1,10 +1,13 @@
-# Try Rave Run on your own computer: http://localhost:3000 (password: raverun unless you set APP_PASSWORD).
+# Run Rave Run on your own computer: http://localhost:3000 (password: raverun unless you set APP_PASSWORD).
 #   docker compose -f docker-compose.local.yml up --build
+# Windows auto-start at sign-in: scripts/windows/install-autostart.ps1 (see docs/TRY_IT.md).
+# Containers restart by themselves whenever Docker starts (restart: unless-stopped).
 # Optional fake prices for testing:
 #   docker compose -f docker-compose.local.yml run --rm worker npm run demo
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: raverun
       POSTGRES_PASSWORD: raverun
@@ -18,9 +21,11 @@ services:
 
   flights-free:
     build: ./services/flights-free
+    restart: unless-stopped
 
   worker:
     build: { context: ., target: worker }
+    restart: unless-stopped
     env_file:
       - path: .env
         required: false
@@ -33,6 +38,7 @@ services:
 
   web:
     build: { context: ., target: web }
+    restart: unless-stopped
     env_file:
       - path: .env
         required: false

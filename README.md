@@ -56,7 +56,7 @@ Hotel nights follow the trip window. Ultra is 4 nights (Mar 25–29) and HiJinx 
 
 ## Try it
 
-See **[docs/TRY_IT.md](docs/TRY_IT.md)**: Docker or Node, optional fake **DEMO** prices (`npm run demo`), and a checklist of what to test.
+**Windows PC:** `powershell -ExecutionPolicy Bypass -File scripts\windows\install-autostart.ps1` builds it, starts it, and makes it start at every sign-in. Checks missed while the PC was off run when it's back. See **[docs/TRY_IT.md](docs/TRY_IT.md)**: Docker or Node, optional fake **DEMO** prices (`npm run demo`), and a checklist of what to test.
 
 ## Run locally
 

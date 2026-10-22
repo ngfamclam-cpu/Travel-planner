@@ -32,6 +32,26 @@ docker compose -f docker-compose.local.yml run --rm worker npm run db:reset
 
 **On your phone:** while it runs, open `http://<your computer's local IP>:3000` on the same Wi-Fi. Find the IP in System Settings → Network on a Mac, or with `ipconfig` on Windows.
 
+## Windows: run it on your PC, starting by itself
+
+1. Install **Docker Desktop** (https://www.docker.com/products/docker-desktop/). Start it and wait for **Engine running**.
+2. In **PowerShell**, in the folder you cloned. PowerShell 5 doesn't accept `&&`, so run one line at a time:
+   ```powershell
+   cd rave-run
+   git checkout claude/great-franklin-us4rfm
+   git pull
+   powershell -ExecutionPolicy Bypass -File scripts\windows\install-autostart.ps1
+   ```
+   It builds the app (5–15 minutes the first time), starts it, adds a **Rave Run** shortcut to your Startup folder, and prints the address.
+3. Open **http://localhost:3000** and sign in with the password **`raverun`**. To change it, create a `.env` file in the folder with `APP_PASSWORD=your-password` and run the install script again.
+
+**What happens from then on**
+- **At sign-in:** Windows starts Docker Desktop if needed, waits for it, and brings Rave Run up in the background. No window appears. The log is at `%LOCALAPPDATA%\RaveRun\start.log`.
+- **Missed checks:** price checks run at 5–6 AM ET. If the PC was off or asleep then, anything older than 20 hours runs about 30 seconds after Rave Run starts, and an hourly check catches anything still missed after the PC wakes from sleep.
+- **On your phone:** with Tailscale on the PC and phone, open `http://<pc-name>.<tailnet>.ts.net:3000` (the install script prints it). On home Wi-Fi without Tailscale, use `http://<PC's IP>:3000`. If the phone can't connect, allow Docker Desktop through Windows Firewall when Windows asks.
+- **Turn auto-start off:** `powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall-autostart.ps1` (add `-Stop` to shut it down now; your data is kept).
+- **Update later:** `git pull`, then run the install script again.
+
 ## Option B: Node + Postgres
 
 ```sh

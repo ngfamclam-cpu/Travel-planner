@@ -7,6 +7,7 @@ import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
 import { runTicketJob } from "./jobs/tickets";
 import { runPrune } from "./jobs/prune";
+import { JobRunner, settingsLastRunStore } from "./scheduler";
 
 const TZ = "America/New_York";
 // Flights run early so the 7:00 brief (step 8) has fresh numbers; searches are paced inside the job.
@@ -61,18 +62,30 @@ async function prune() {
 }
 
 async function main() {
+  const runner = new JobRunner(
+    [
+      { name: "flights", run: flights },
+      { name: "hotels", run: hotels },
+      { name: "tickets", run: tickets },
+      { name: "prune", run: prune },
+    ],
+    settingsLastRunStore(prisma),
+  );
   if (process.argv.includes("--once")) {
-    await flights();
-    await hotels();
-    await tickets();
+    await runner.runAll();
     await prisma.$disconnect();
     return;
   }
   console.log(`Worker up. Flights: "${FLIGHT_SCHEDULE}", hotels: "${HOTEL_SCHEDULE}", tickets: "${TICKET_SCHEDULE}" ${TZ}`);
-  cron.schedule(FLIGHT_SCHEDULE, flights, { timezone: TZ });
-  cron.schedule(HOTEL_SCHEDULE, hotels, { timezone: TZ });
-  cron.schedule(TICKET_SCHEDULE, tickets, { timezone: TZ });
-  cron.schedule("30 3 * * *", prune, { timezone: TZ });
+  cron.schedule(FLIGHT_SCHEDULE, () => runner.scheduled("flights"), { timezone: TZ });
+  cron.schedule(HOTEL_SCHEDULE, () => runner.scheduled("hotels"), { timezone: TZ });
+  cron.schedule(TICKET_SCHEDULE, () => runner.scheduled("tickets"), { timezone: TZ });
+  cron.schedule("30 3 * * *", () => runner.scheduled("prune"), { timezone: TZ });
+  // Missed runs (computer off or asleep): check on startup and every hour.
+  const catchUp = (why: string) =>
+    runner.catchUp(why).then((ran) => ran.length && console.log(`Caught up: ${ran.join(", ")}`), (e) => console.error("Catch-up failed:", e));
+  setTimeout(() => catchUp("startup"), 30_000); // let the database and flights-free settle first
+  cron.schedule("17 * * * *", () => catchUp("hourly check"), { timezone: TZ });
 }
 
 main().catch(async (e) => {
