@@ -1,0 +1,280 @@
+// Rave Run data model. Section numbers refer to the build spec.
+// Dates that are calendar days (event days, trip days) use @db.Date so they never shift with time zones.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EventStatus {
+  announced
+  on_sale
+  sold_out
+  cancelled
+  past
+}
+
+enum TripStatus {
+  considering
+  planned
+  booked
+  done
+}
+
+enum LineItemKind {
+  flight
+  hotel
+  ticket
+  ground
+  food
+  other
+}
+
+model Event {
+  id               String       @id @default(cuid())
+  name             String
+  brand            String?
+  city             String
+  country          String       @default("US")
+  region           String       @default("US") // US | Asia
+  venue            String?
+  lat              Float?
+  lng              Float?
+  startDate        DateTime     @map("start_date") @db.Date
+  endDate          DateTime     @map("end_date") @db.Date
+  datesTentative   Boolean      @default(false) @map("dates_tentative")
+  genres           String[]
+  lineupHighlights String[]     @map("lineup_highlights")
+  airports         String[] // destination airports to search, e.g. {MIA,FLL}
+  drivableFromBoston Boolean    @default(false) @map("drivable_from_boston")
+  officialUrl      String?      @map("official_url")
+  ticketUrl        String?      @map("ticket_url")
+  notes            String?
+  source           String       @default("manual")
+  status           EventStatus  @default(announced)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  ticketTiers      TicketTier[]
+  trips            Trip[]
+
+  @@unique([name, startDate])
+  @@map("events")
+}
+
+model TicketTier {
+  id            String   @id @default(cuid())
+  eventId       String   @map("event_id")
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name          String // GA / GA+ / VIP
+  tierLabel     String?  @map("tier_label") // "Tier 2", "Last tier"
+  priceAllIn    Decimal? @map("price_all_in") @db.Decimal(10, 2)
+  feesIncluded  Boolean  @default(true) @map("fees_included")
+  isResale      Boolean  @default(false) @map("is_resale")
+  onSale        Boolean  @default(false) @map("on_sale")
+  soldOut       Boolean  @default(false) @map("sold_out")
+  observedAt    DateTime @default(now()) @map("observed_at")
+  source        String
+  sourceUrl     String?  @map("source_url")
+
+  @@index([eventId])
+  @@map("ticket_tiers")
+}
+
+model Trip {
+  id           String     @id @default(cuid())
+  name         String
+  eventId      String?    @map("event_id")
+  event        Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  status       TripStatus @default(considering)
+  slot         String? // compare group, e.g. "NYE 2026" or "Asia spring 2027"
+  color        String     @default("#a855f7") // wristband stripe
+  arriveDate   DateTime   @map("arrive_date") @db.Date
+  departDate   DateTime   @map("depart_date") @db.Date
+  flexDays     Int        @default(2) @map("flex_days")
+  notes        String?
+  chosenOption Json?      @map("chosen_option")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  lineItems    LineItem[]
+
+  @@map("trips")
+}
+
+model LineItem {
+  id            String          @id @default(cuid())
+  tripId        String          @map("trip_id")
+  trip          Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  kind          LineItemKind
+  label         String
+  // Amounts are per unit; total = amount × qty.
+  estAmount     Decimal?        @map("est_amount") @db.Decimal(10, 2)
+  quotedAmount  Decimal?        @map("quoted_amount") @db.Decimal(10, 2)
+  bookedAmount  Decimal?        @map("booked_amount") @db.Decimal(10, 2)
+  qty           Int             @default(1)
+  isEstimate    Boolean         @default(true) @map("is_estimate")
+  // Provenance for the quoted amount (spec §14: every price shows source + time).
+  quotedSource  String?         @map("quoted_source")
+  quotedAt      DateTime?       @map("quoted_at")
+  quotedUrl     String?         @map("quoted_url")
+  insightLabel  String?         @map("insight_label") // Google "low" | "typical" | "high"
+  // For flights: { origins: [...], destinations: [...], tripType: "round" }
+  searchSpec    Json?           @map("search_spec")
+  // Surge = event-window price ÷ baseline price for a normal week (spec §3).
+  baselinePrice Decimal?        @map("baseline_price") @db.Decimal(10, 2)
+  baselineAt    DateTime?       @map("baseline_at")
+  notes         String?
+  sortOrder     Int             @default(0) @map("sort_order")
+  cardId        String?         @map("card_id")
+  card          Card?           @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  snapshots     PriceSnapshot[]
+  redemptions   Redemption[]
+  savings       SavingsMeter[]
+
+  @@index([tripId])
+  @@map("line_items")
+}
+
+model PriceSnapshot {
+  id              String   @id @default(cuid())
+  lineItemId      String   @map("line_item_id")
+  lineItem        LineItem @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  query           Json
+  variant         String? // "base", "-1/+1", "baseline" ...
+  isBaseline      Boolean  @default(false) @map("is_baseline")
+  provider        String
+  price           Decimal  @db.Decimal(10, 2) // fare/rate as quoted by the source
+  positioningCost Decimal  @default(0) @map("positioning_cost") @db.Decimal(10, 2)
+  totalPrice      Decimal  @map("total_price") @db.Decimal(10, 2) // price + positioning
+  currency        String   @default("USD")
+  origin          String?
+  destination     String?
+  outboundDate    DateTime? @map("outbound_date") @db.Date
+  returnDate      DateTime? @map("return_date") @db.Date
+  cabin           String?
+  stops           Int?
+  carrier         String?
+  hotelName       String?  @map("hotel_name")
+  stars           Float?
+  rating          Float?
+  insightLabel    String?  @map("insight_label")
+  bookingUrl      String?  @map("booking_url")
+  fetchedAt       DateTime @default(now()) @map("fetched_at")
+  raw             Json?
+
+  @@index([lineItemId, fetchedAt])
+  @@map("price_snapshots")
+}
+
+model Card {
+  id              String     @id @default(cuid())
+  name            String     @unique
+  network         String
+  foreignFeePct   Decimal?   @map("foreign_fee_pct") @db.Decimal(4, 2) // null = unknown
+  pointsCurrency  String?    @map("points_currency")
+  transferEnabled Boolean?   @map("transfer_enabled") // null = unknown until settings answered
+  earnRules       Json       @map("earn_rules")
+  version         String? // e.g. Citi Strata vs Strata Premier
+  needsSetup      Boolean    @default(false) @map("needs_setup")
+  notes           String?
+  lineItems       LineItem[]
+
+  @@map("cards")
+}
+
+model PointsBalance {
+  id        String   @id @default(cuid())
+  currency  String   @unique // "Amex MR", "Citi TYP", "Chase UR"
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("points_balances")
+}
+
+model TransferPartner {
+  id       String @id @default(cuid())
+  currency String
+  partner  String
+  ratio    Float  @default(1) // partner miles per point
+  kind     String @default("airline") // airline | hotel
+  notes    String?
+
+  @@unique([currency, partner])
+  @@map("transfer_partners")
+}
+
+model Redemption {
+  id         String   @id @default(cuid())
+  lineItemId String   @map("line_item_id")
+  lineItem   LineItem @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  points     Int
+  taxesFees  Decimal  @map("taxes_fees") @db.Decimal(10, 2)
+  cashPrice  Decimal  @map("cash_price") @db.Decimal(10, 2)
+  cpp        Decimal  @db.Decimal(6, 2)
+  verdict    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("redemptions")
+}
+
+model Brief {
+  id         String   @id @default(cuid())
+  date       DateTime @unique @db.Date
+  html       String
+  text       String
+  payload    Json?
+  sentPush   Boolean  @default(false) @map("sent_push")
+  sentEmail  Boolean  @default(false) @map("sent_email")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("briefs")
+}
+
+model Setting {
+  key   String @id
+  value Json
+
+  @@map("settings")
+}
+
+model SavingsMeter {
+  id             String   @id @default(cuid())
+  date           DateTime @db.Date
+  lineItemId     String   @map("line_item_id")
+  lineItem       LineItem @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  freeBestPrice  Decimal? @map("free_best_price") @db.Decimal(10, 2)
+  paidBestPrice  Decimal? @map("paid_best_price") @db.Decimal(10, 2)
+
+  @@map("savings_meter")
+}
+
+// One row per provider call batch, so the UI/brief can say "couldn't check X today".
+model ProviderRun {
+  id        String   @id @default(cuid())
+  provider  String
+  kind      String // flight | hotel | event | award
+  ok        Boolean
+  queries   Int      @default(0)
+  results   Int      @default(0)
+  error     String?
+  startedAt DateTime @default(now()) @map("started_at")
+
+  @@index([provider, startedAt])
+  @@map("provider_runs")
+}
+
+// 6-hour cache of identical provider queries (spec §5).
+model QueryCache {
+  key       String   @id
+  provider  String
+  response  Json
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+
+  @@map("query_cache")
+}

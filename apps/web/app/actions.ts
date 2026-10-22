@@ -1,0 +1,288 @@
+"use server";
+
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { DEFAULT_SETTINGS, mergeSettings, type AppSettings } from "@rave-run/core";
+import { createTripFromEvent, day, prisma, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
+import { SESSION_COOKIE, authConfigured, sessionToken, timingSafeEqual } from "@/lib/auth";
+
+const str = (f: FormData, k: string) => {
+  const v = f.get(k);
+  return typeof v === "string" ? v.trim() : "";
+};
+/** "" → null, "$1,234.50" → 1234.5. Throws on junk so bad input never becomes a price. */
+function money(f: FormData, k: string): number | null {
+  const raw = str(f, k).replace(/[$,\s]/g, "");
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid amount for ${k}: ${raw}`);
+  return Math.round(n * 100) / 100;
+}
+const isoDate = (f: FormData, k: string) => {
+  const v = str(f, k);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error(`Invalid date for ${k}`);
+  return v;
+};
+const KINDS: LineItemKind[] = ["flight", "hotel", "ticket", "ground", "food", "other"];
+const STATUSES: TripStatus[] = ["considering", "planned", "booked", "done"];
+
+function refresh(tripId?: string) {
+  revalidatePath("/");
+  revalidatePath("/compare");
+  if (tripId) revalidatePath(`/trips/${tripId}`);
+}
+
+// ---------- auth ----------
+
+export async function login(_prev: string | null, f: FormData): Promise<string | null> {
+  if (!authConfigured()) return "Set APP_PASSWORD and SESSION_SECRET in .env first.";
+  if (!timingSafeEqual(str(f, "password"), process.env.APP_PASSWORD!)) {
+    await new Promise((r) => setTimeout(r, 800));
+    return "Wrong password.";
+  }
+  (await cookies()).set(SESSION_COOKIE, await sessionToken(), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 90,
+  });
+  redirect("/");
+}
+
+export async function logout() {
+  (await cookies()).delete(SESSION_COOKIE);
+  redirect("/login");
+}
+
+// ---------- line items ----------
+
+export async function updateLineItem(f: FormData) {
+  const id = str(f, "id");
+  const li = await prisma.lineItem.findUniqueOrThrow({ where: { id } });
+  const quoted = money(f, "quotedAmount");
+  const quoteChanged = quoted !== (li.quotedAmount == null ? null : Number(li.quotedAmount));
+  const qty = Math.max(0, Math.round(Number(str(f, "qty") || li.qty)));
+  const cardId = str(f, "cardId");
+
+  await prisma.lineItem.update({
+    where: { id },
+    data: {
+      label: str(f, "label") || li.label,
+      estAmount: money(f, "estAmount"),
+      quotedAmount: quoted,
+      bookedAmount: money(f, "bookedAmount"),
+      qty,
+      notes: str(f, "notes") || null,
+      cardId: cardId || null,
+      // A hand-typed quote is labeled as such, with the time it was entered.
+      ...(quoteChanged
+        ? {
+            quotedSource: quoted == null ? null : str(f, "quotedSource") || "manual entry",
+            quotedAt: quoted == null ? null : new Date(),
+            quotedUrl: null,
+            insightLabel: null,
+          }
+        : {}),
+      isEstimate: quoted == null && money(f, "bookedAmount") == null,
+    },
+  });
+  refresh(li.tripId);
+}
+
+export async function addLineItem(f: FormData) {
+  const tripId = str(f, "tripId");
+  const kind = str(f, "kind") as LineItemKind;
+  if (!KINDS.includes(kind)) throw new Error("Bad kind");
+  const destinations = str(f, "destinations")
+    .toUpperCase()
+    .split(/[\s,/]+/)
+    .filter((a) => /^[A-Z]{3}$/.test(a));
+  const count = await prisma.lineItem.count({ where: { tripId } });
+  await prisma.lineItem.create({
+    data: {
+      tripId,
+      kind,
+      label: str(f, "label") || kind,
+      estAmount: money(f, "estAmount"),
+      qty: Math.max(1, Number(str(f, "qty") || 1)),
+      searchSpec: kind === "flight" && destinations.length ? { destinations } : undefined,
+      sortOrder: count,
+    },
+  });
+  refresh(tripId);
+}
+
+export async function deleteLineItem(f: FormData) {
+  const li = await prisma.lineItem.delete({ where: { id: str(f, "id") } });
+  refresh(li.tripId);
+}
+
+// ---------- trips ----------
+
+export async function updateTrip(f: FormData) {
+  const id = str(f, "id");
+  const status = str(f, "status") as TripStatus;
+  if (!STATUSES.includes(status)) throw new Error("Bad status");
+  const arrive = isoDate(f, "arrive");
+  const depart = isoDate(f, "depart");
+  if (depart <= arrive) throw new Error("Depart must be after arrive");
+  await prisma.trip.update({
+    where: { id },
+    data: {
+      name: str(f, "name") || undefined,
+      status,
+      arriveDate: day(arrive),
+      departDate: day(depart),
+      flexDays: Math.min(3, Math.max(0, Number(str(f, "flexDays") || 2))),
+      notes: str(f, "notes") || null,
+    },
+  });
+  refresh(id);
+}
+
+export async function deleteTrip(f: FormData) {
+  await prisma.trip.delete({ where: { id: str(f, "id") } });
+  refresh();
+  redirect("/");
+}
+
+/** Pick one option in a compare slot: it becomes planned, the rest go back to considering. */
+export async function chooseOption(f: FormData) {
+  const id = str(f, "id");
+  const trip = await prisma.trip.findUniqueOrThrow({ where: { id } });
+  if (trip.slot) {
+    await prisma.trip.updateMany({ where: { slot: trip.slot, id: { not: id }, status: "planned" }, data: { status: "considering" } });
+  }
+  await prisma.trip.update({ where: { id }, data: { status: "planned" } });
+  if (trip.slot?.startsWith("NYE")) {
+    await prisma.setting.upsert({ where: { key: "nyeChoice" }, create: { key: "nyeChoice", value: id }, update: { value: id } });
+  }
+  if (trip.slot?.startsWith("Asia")) {
+    const value = /tokyo/i.test(trip.name) ? "tokyo" : "china";
+    await prisma.setting.upsert({ where: { key: "asiaDestination" }, create: { key: "asiaDestination", value }, update: { value } });
+  }
+  refresh(id);
+}
+
+// ---------- events ----------
+
+/** Spec §14: adding an event automatically creates a trip on the event window. */
+export async function createEvent(f: FormData) {
+  const start = isoDate(f, "start");
+  const end = str(f, "end") ? isoDate(f, "end") : start;
+  if (end < start) throw new Error("End before start");
+  const airports = str(f, "airports")
+    .toUpperCase()
+    .split(/[\s,/]+/)
+    .filter((a) => /^[A-Z]{3}$/.test(a));
+  const country = (str(f, "country") || "US").toUpperCase();
+  const event = await prisma.event.create({
+    data: {
+      name: str(f, "name"),
+      city: str(f, "city"),
+      country,
+      region: country === "US" ? "US" : "Asia",
+      venue: str(f, "venue") || null,
+      startDate: day(start),
+      endDate: day(end),
+      airports,
+      officialUrl: str(f, "officialUrl") || null,
+      genres: [],
+      lineupHighlights: [],
+      source: "manual",
+    },
+  });
+  const trip = await createTripFromEvent(prisma, event.id, { slot: str(f, "slot") || undefined });
+  refresh(trip.id);
+  redirect(`/trips/${trip.id}`);
+}
+
+export async function addTripForEvent(f: FormData) {
+  const eventId = str(f, "eventId");
+  const airports = str(f, "airports")
+    .toUpperCase()
+    .split(/[\s,/]+/)
+    .filter((a) => /^[A-Z]{3}$/.test(a));
+  if (airports.length) await prisma.event.update({ where: { id: eventId }, data: { airports } });
+  const trip = await createTripFromEvent(prisma, eventId);
+  refresh(trip.id);
+  redirect(`/trips/${trip.id}`);
+}
+
+// ---------- settings ----------
+
+async function putSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
+  const v = value as unknown as Prisma.InputJsonValue;
+  await prisma.setting.upsert({ where: { key }, create: { key, value: v }, update: { value: v } });
+}
+
+export async function saveSettings(f: FormData) {
+  const current = mergeSettings(await prisma.setting.findMany());
+  const n = (k: string, fallback: number) => {
+    const v = Number(str(f, k));
+    return Number.isFinite(v) && str(f, k) !== "" ? v : fallback;
+  };
+
+  await putSetting(
+    "originAirports",
+    current.originAirports.map((a) => ({
+      ...a,
+      positioningCost: n(`pos_${a.code}`, a.positioningCost),
+      enabled: f.get(`use_${a.code}`) === "on",
+    })),
+  );
+  await putSetting("flexDays", Math.min(3, Math.max(0, n("flexDays", current.flexDays))));
+  await putSetting("hotelMinStars", n("hotelMinStars", current.hotelMinStars));
+  await putSetting("hotelMinRating10", n("hotelMinRating10", current.hotelMinRating10));
+  await putSetting("cppFloor", n("cppFloor", current.cppFloor));
+  await putSetting("briefTime", /^\d{2}:\d{2}$/.test(str(f, "briefTime")) ? str(f, "briefTime") : current.briefTime);
+  await putSetting("briefChannels", { push: f.get("briefPush") === "on", email: f.get("briefEmail") === "on" });
+  await putSetting("serpapiMonthlyQuota", n("serpapiMonthlyQuota", current.serpapiMonthlyQuota));
+  await putSetting("cards", {
+    citiStrataVersion: (str(f, "citiStrataVersion") || "unknown") as AppSettings["cards"]["citiStrataVersion"],
+    hasChaseSapphire: (str(f, "hasChaseSapphire") || "unknown") as AppSettings["cards"]["hasChaseSapphire"],
+    chaseFreedomVersion: (str(f, "chaseFreedomVersion") || "unknown") as AppSettings["cards"]["chaseFreedomVersion"],
+  });
+  await putSetting("status", { airline: str(f, "statusAirline"), hotel: str(f, "statusHotel") });
+
+  // Card facts that follow from the answers.
+  const sapphire = str(f, "hasChaseSapphire");
+  if (sapphire !== "unknown") {
+    await prisma.card.updateMany({ where: { name: "Chase Freedom" }, data: { transferEnabled: sapphire === "yes", needsSetup: str(f, "chaseFreedomVersion") === "unknown" } });
+  }
+  const strata = str(f, "citiStrataVersion");
+  if (strata && strata !== "unknown") {
+    const premium = strata !== "strata";
+    await prisma.card.updateMany({
+      where: { name: "Citi Strata" },
+      data: { version: strata, needsSetup: false, transferEnabled: premium, foreignFeePct: premium ? 0 : 3 },
+    });
+    await prisma.card.updateMany({ where: { name: "Citi Custom Cash" }, data: { transferEnabled: premium } });
+  }
+  revalidatePath("/settings");
+  revalidatePath("/");
+}
+
+export async function resetAirports() {
+  await putSetting("originAirports", DEFAULT_SETTINGS.originAirports);
+  revalidatePath("/settings");
+}
+
+export async function savePoints(f: FormData) {
+  for (const currency of ["Amex MR", "Citi TYP", "Chase UR"]) {
+    const raw = str(f, `pts_${currency}`).replace(/[,\s]/g, "");
+    if (raw === "") continue;
+    const balance = Math.max(0, Math.round(Number(raw)));
+    if (!Number.isFinite(balance)) continue;
+    await prisma.pointsBalance.upsert({ where: { currency }, create: { currency, balance }, update: { balance } });
+  }
+  await prisma.setting.upsert({
+    where: { key: "pointsUpdatedAt" },
+    create: { key: "pointsUpdatedAt", value: new Date().toISOString() },
+    update: { value: new Date().toISOString() },
+  });
+  revalidatePath("/settings");
+  revalidatePath("/");
+}

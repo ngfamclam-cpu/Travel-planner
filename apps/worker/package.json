@@ -1,0 +1,19 @@
+{
+  "name": "@rave-run/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "once": "tsx src/index.ts --once"
+  },
+  "dependencies": {
+    "@rave-run/core": "*",
+    "@rave-run/db": "*",
+    "@rave-run/providers": "*",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node-cron": "^3.0.11"
+  }
+}

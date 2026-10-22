@@ -1,0 +1,31 @@
+{
+  "name": "rave-run",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Personal EDM-festival travel planner: event-window pricing, buy signals, points, daily brief.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:generate": "npm run generate -w @rave-run/db",
+    "db:migrate": "npm run migrate:dev -w @rave-run/db",
+    "db:deploy": "npm run migrate:deploy -w @rave-run/db",
+    "db:seed": "npm run seed -w @rave-run/db",
+    "dev": "npm run dev -w @rave-run/web",
+    "build": "npm run build -w @rave-run/web",
+    "worker": "npm run start -w @rave-run/worker",
+    "worker:once": "npm run once -w @rave-run/worker",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/core && tsc -p packages/providers && tsc -p apps/worker && tsc -p apps/web --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

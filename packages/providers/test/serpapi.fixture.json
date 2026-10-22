@@ -1,0 +1,28 @@
+{
+  "search_metadata": { "status": "Success", "google_flights_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=FIXTURE" },
+  "best_flights": [
+    {
+      "flights": [
+        { "departure_airport": { "id": "BOS", "time": "2027-03-25 08:00" }, "arrival_airport": { "id": "MIA", "time": "2027-03-25 11:39" }, "airline": "American", "flight_number": "AA 1234" }
+      ],
+      "total_duration": 219,
+      "price": 427,
+      "type": "Round trip",
+      "departure_token": "x"
+    }
+  ],
+  "other_flights": [
+    {
+      "flights": [
+        { "departure_airport": { "id": "JFK", "time": "2027-03-25 06:00" }, "arrival_airport": { "id": "ATL" }, "airline": "Delta" },
+        { "departure_airport": { "id": "ATL" }, "arrival_airport": { "id": "FLL", "time": "2027-03-25 12:10" }, "airline": "Delta" }
+      ],
+      "layovers": [{ "id": "ATL", "duration": 70 }],
+      "total_duration": 370,
+      "price": 389,
+      "type": "Round trip"
+    },
+    { "flights": [], "price": 100 }
+  ],
+  "price_insights": { "lowest_price": 389, "price_level": "high", "typical_price_range": [300, 380], "price_history": [[1729000000, 410]] }
+}
