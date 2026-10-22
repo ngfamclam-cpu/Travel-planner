@@ -10,6 +10,8 @@ import {
   eventClashes,
   eventWindow,
   findClashes,
+  googleFlightsUrl,
+  cityForAirports,
   isPeakWindow,
   isStale,
   nights,
@@ -135,6 +137,18 @@ describe("freshness", () => {
     expect(isStale(new Date("2026-10-20T11:00:00Z"), now)).toBe(true);
     expect(isStale(new Date("2026-10-21T11:00:00Z"), now)).toBe(false);
     expect(isStale(null, now)).toBe(true);
+  });
+});
+
+describe("Google Flights links", () => {
+  it("names the cities and the exact dates", () => {
+    const url = googleFlightsUrl({ fromCity: "Boston", destinations: ["MIA", "FLL"], toCity: "Miami", outboundDate: "2027-03-25", returnDate: "2027-03-29" });
+    expect(decodeURIComponent(new URL(url).searchParams.get("q")!)).toBe("Flights from Boston to Miami on Mar 25, 2027 through Mar 29, 2027");
+  });
+  it("falls back to airport city names", () => {
+    const q = new URL(googleFlightsUrl({ origins: ["PVD"], destinations: ["HND", "NRT"], outboundDate: "2027-03-30", returnDate: "2027-04-11" })).searchParams.get("q");
+    expect(q).toBe("Flights from Providence to Tokyo on Mar 30, 2027 through Apr 11, 2027");
+    expect(cityForAirports(["MIA", "FLL"])).toBe("Miami or Fort Lauderdale");
   });
 });
 

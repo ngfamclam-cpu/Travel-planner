@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { HOTEL_TIER_LABEL, googleFlightsUrl, googleHotelsUrl, searchOrigins, surgeSentence } from "@rave-run/core";
+import { HOTEL_TIER_LABEL, flightDestinationCity, googleFlightsUrl, googleHotelsUrl, surgeSentence } from "@rave-run/core";
 import { addLineItem, deleteLineItem, deleteTrip, pinHotel, trackTickets, updateLineItem, updateTrip } from "@/app/actions";
 import { AlertList } from "@/components/AlertList";
 import { InsightChip, PriceTag, Provenance } from "@/components/PriceTag";
@@ -12,11 +12,12 @@ import { fmtDay, fmtRange, fmtWhen, usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-function deepLink(t: TripView, li: LineItemView, origins: string[]): { href: string; text: string } | null {
+function deepLink(t: TripView, li: LineItemView, homeCity: string): { href: string; text: string } | null {
   if (li.kind === "flight" && li.searchSpec?.destinations?.length) {
+    const toCity = flightDestinationCity(t.event?.city, li.searchSpec.destinations);
     return {
-      href: googleFlightsUrl({ origins: li.searchSpec.origins ?? origins, destinations: li.searchSpec.destinations, outboundDate: t.arrive, returnDate: t.depart }),
-      text: "Search Google Flights",
+      href: googleFlightsUrl({ fromCity: homeCity, toCity, outboundDate: t.arrive, returnDate: t.depart }),
+      text: `Search Google Flights: ${homeCity} → ${toCity}`,
     };
   }
   if (li.kind === "hotel" && li.hotel?.location) {
@@ -86,8 +87,8 @@ function HotelDetails({ li }: { li: LineItemView }) {
   );
 }
 
-function LineItem({ t, li, cards, origins }: { t: TripView; li: LineItemView; cards: { id: string; name: string }[]; origins: string[] }) {
-  const link = deepLink(t, li, origins);
+function LineItem({ t, li, cards, homeCity }: { t: TripView; li: LineItemView; cards: { id: string; name: string }[]; homeCity: string }) {
+  const link = deepLink(t, li, homeCity);
   return (
     <div className="li">
       <div className="li-head">
@@ -191,7 +192,6 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   const { tier } = await searchParams;
   const [t, cards, settings, alerts, dateCards] = await Promise.all([getTrip(id), getCards(), getSettings(), openAlerts(id), tripDateCards(id, tier)]);
   if (!t) notFound();
-  const origins = searchOrigins(settings);
   const tickets = t.event ? await eventTickets(t.event.id) : null;
 
   return (
@@ -242,7 +242,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
             booked {usd(t.totals.booked)} · quoted {usd(t.totals.quoted)} · est {usd(t.totals.estimated)}
           </small>
         </div>
-        {t.items.map((li) => <LineItem key={li.id} t={t} li={li} cards={cards} origins={origins} />)}
+        {t.items.map((li) => <LineItem key={li.id} t={t} li={li} cards={cards} homeCity={settings.homeCity} />)}
         <details>
           <summary>+ Add line item</summary>
           <form action={addLineItem} className="fields">

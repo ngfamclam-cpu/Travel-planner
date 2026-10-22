@@ -13,6 +13,7 @@ import {
   type TicketQuote,
   todayIn,
   defaultHotelLocation,
+  flightDestinationCity,
   destinationFromAirports,
   findClashes,
   isStale,
@@ -283,6 +284,8 @@ export async function openAlerts(tripId?: string) {
 }
 
 export interface TripCards {
+  /** For the per-card Google Flights link. */
+  flightSearch: { fromCity: string; toCity: string } | null;
   tier: HotelTier;
   /** The hotel pick saved on the trip (the tier view can differ). */
   savedTier: HotelTier;
@@ -390,7 +393,16 @@ export async function tripDateCards(tripId: string, requestedTier?: string): Pro
   });
   const sorted = sortCards(cards, tier);
   const complete = sorted.filter((s) => s.price.complete && !s.price.estimated);
-  return { tier, savedTier: chosenOpt.hotelTier ?? "cheapest", tiers, cards: sorted, cheapestTotal: complete[0]?.price.total ?? null };
+  const destinations = (flightItem?.searchSpec as FlightSearchSpec | null)?.destinations ?? [];
+  const homeCity = (await getSettings()).homeCity;
+  return {
+    flightSearch: destinations.length ? { fromCity: homeCity, toCity: flightDestinationCity(trip.event?.city, destinations) } : null,
+    tier,
+    savedTier: chosenOpt.hotelTier ?? "cheapest",
+    tiers,
+    cards: sorted,
+    cheapestTotal: complete[0]?.price.total ?? null,
+  };
 }
 
 // ---------- ticket tracker ----------

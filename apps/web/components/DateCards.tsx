@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { HOTEL_TIER_LABEL } from "@rave-run/core";
+import { AIRPORT_CITY, HOTEL_TIER_LABEL, googleFlightsUrl } from "@rave-run/core";
 import { chooseDates } from "@/app/actions";
 import type { TripCards } from "@/lib/data";
 import { fmtDay, fmtWhen, usd } from "@/lib/format";
@@ -97,6 +97,22 @@ export function DateCards({ tripId, data }: { tripId: string; data: TripCards })
                   <li><span>＋</span><span><span className="num">{usd(card.fixed)}</span> <small>ground &amp; other</small></span></li>
                 )}
               </ul>
+              {data.flightSearch && (
+                <a
+                  href={googleFlightsUrl({
+                    // From the airport that won this card (e.g. Providence), else home.
+                    fromCity: (card.flight?.origin && AIRPORT_CITY[card.flight.origin]) || data.flightSearch.fromCity,
+                    toCity: data.flightSearch.toCity,
+                    outboundDate: card.arrive,
+                    returnDate: card.depart,
+                  })}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 13 }}
+                >
+                  ✈ Google Flights for these dates ↗
+                </a>
+              )}
               {(card.flight || h) && (
                 <small className="muted">
                   checked {fmtWhen(new Date(Math.min(...[card.flight?.fetchedAt, h?.fetchedAt].filter((x): x is Date => !!x).map((x) => x.getTime()))))}

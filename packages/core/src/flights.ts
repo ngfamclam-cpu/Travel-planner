@@ -1,4 +1,5 @@
 // Flight query types and the daily query planner (spec §3, §5).
+import { cityForAirports } from "./airports";
 import { diffDays, parseISODate, type ISODate } from "./dates";
 import { baselineWindow, dateVariants, variantLabel, type DateVariant, type TravelWindow } from "./windows";
 
@@ -48,10 +49,24 @@ export function flightQueryKey(provider: string, q: FlightQuery): string {
   ].join("|");
 }
 
-/** Google Flights search link for a query, so the UI can deep-link instead of buying (spec §11). */
-export function googleFlightsUrl(q: Pick<FlightQuery, "origins" | "destinations" | "outboundDate" | "returnDate">): string {
-  const text = `Flights from ${q.origins.join(",")} to ${q.destinations.join(",")} on ${q.outboundDate} through ${q.returnDate}`;
-  return `https://www.google.com/travel/flights?q=${encodeURIComponent(text)}&curr=USD`;
+/**
+ * Google Flights search link, worded by city with the exact dates, e.g.
+ * "Flights from Boston to Miami on Mar 25, 2027 through Mar 29, 2027". The app never buys (spec §11).
+ */
+export function googleFlightsUrl(q: {
+  origins?: string[];
+  destinations?: string[];
+  fromCity?: string;
+  toCity?: string;
+  outboundDate: ISODate;
+  returnDate: ISODate;
+}): string {
+  const from = q.fromCity || cityForAirports(q.origins?.length ? [q.origins[0]] : ["BOS"]);
+  const to = q.toCity || cityForAirports(q.destinations ?? []);
+  const day = (iso: ISODate) =>
+    parseISODate(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  const text = `Flights from ${from} to ${to} on ${day(q.outboundDate)} through ${day(q.returnDate)}`;
+  return `https://www.google.com/travel/flights?q=${encodeURIComponent(text)}&curr=USD&hl=en`;
 }
 
 export interface PlannerItem {

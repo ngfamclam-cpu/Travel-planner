@@ -10,3 +10,4 @@ export * from "./flights";
 export * from "./hotels";
 export * from "./cards";
 export * from "./tickets";
+export * from "./airports";
