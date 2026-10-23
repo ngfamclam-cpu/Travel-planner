@@ -46,6 +46,10 @@ export default async function Compare() {
             <div className="compare">
               {opts.map((t) => (
                 <div key={t.id} className="card stripe" style={{ ["--stripe" as string]: t.color }}>
+                  <div className={`hero ${t.event?.heroUrl ? "" : "hero-fallback"}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {t.event?.heroUrl && <img src={t.event.heroUrl} alt="" loading="lazy" />}
+                  </div>
                   <div className="spread">
                     <Link href={`/trips/${t.id}`}><strong>{t.name}</strong></Link>
                     {t.status === "planned" && <span className="chip accent">chosen</span>}

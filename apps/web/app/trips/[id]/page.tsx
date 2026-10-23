@@ -9,9 +9,10 @@ import { Sparkline } from "@/components/Sparkline";
 import { DateCards } from "@/components/DateCards";
 import { TicketTracker } from "@/components/TicketTracker";
 import { ArrivalGuide, type GuideRow } from "@/components/ArrivalGuide";
+import { KIND_ICON } from "@/components/Thumb";
 import { prisma } from "@rave-run/db";
 import type { ArrivalGuideContent } from "@rave-run/core";
-import { eventTickets, getCards, getSettings, getTrip, openAlerts, tripDateCards, type LineItemView, type TripView } from "@/lib/data";
+import { eventTickets, platformIcons, getCards, getSettings, getTrip, openAlerts, tripDateCards, type LineItemView, type TripView } from "@/lib/data";
 import { fmtDay, fmtRange, fmtWhen, usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -68,7 +69,9 @@ function HotelDetails({ li }: { li: LineItemView }) {
         <ul className="options">
           {h.options.map((o) => (
             <li key={o.tier}>
-              <span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {o.imageUrl && <img src={o.imageUrl} alt="" className="hotel-photo" loading="lazy" referrerPolicy="no-referrer" />}
+              <span style={{ flex: 1 }}>
                 <small className="kind">{HOTEL_TIER_LABEL[o.tier]}</small>{" "}
                 {o.url ? <a href={o.url} target="_blank" rel="noreferrer">{o.name}</a> : o.name}{" "}
                 <small>
@@ -98,7 +101,7 @@ function LineItem({ t, li, cards, homeCity }: { t: TripView; li: LineItemView; c
       <div className="li-head">
         <div style={{ flex: "1 1 220px" }}>
           <div className="spread">
-            <div className="kind">{li.kind}</div>
+            <div className="kind"><span className="kind-icon">{KIND_ICON[li.kind] ?? "📦"}</span>{li.kind}</div>
             <IncludeSwitch id={li.id} included={li.included} />
           </div>
           <strong>{li.label}</strong>
@@ -224,7 +227,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   const { tier } = await searchParams;
   const [t, cards, settings, alerts, dateCards] = await Promise.all([getTrip(id), getCards(), getSettings(), openAlerts(id), tripDateCards(id, tier)]);
   if (!t) notFound();
-  const tickets = t.event ? await eventTickets(t.event.id) : null;
+  const [tickets, icons] = await Promise.all([t.event ? eventTickets(t.event.id) : null, platformIcons()]);
   const guideRow = await prisma.arrivalGuide.findUnique({ where: { tripId: t.id } });
   const guide: GuideRow | null = guideRow
     ? { status: guideRow.status, error: guideRow.error, content: guideRow.content as unknown as ArrivalGuideContent | null, generatedAt: guideRow.generatedAt, requestedAt: guideRow.requestedAt }
@@ -233,6 +236,12 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   return (
     <>
       <section className="card stripe" style={{ ["--stripe" as string]: t.color }}>
+        <div className={`hero ${t.event?.heroUrl ? "" : "hero-fallback"}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {t.event?.heroUrl && <img src={t.event.heroUrl} alt="" />}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {t.event?.iconUrl && <img src={t.event.iconUrl} alt="" className="hero-icon" />}
+        </div>
         <div className="spread">
           <div>
             {t.slot && <small>{t.slot}</small>}
@@ -303,7 +312,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
         </details>
       </section>
 
-      {tickets && tickets.rows.length > 0 && <TicketTracker t={tickets} />}
+      {tickets && tickets.rows.length > 0 && <TicketTracker t={tickets} icons={icons} />}
       {tickets && tickets.rows.length === 0 && (
         <section className="card">
           <h2 style={{ marginTop: 0 }}>Tickets</h2>

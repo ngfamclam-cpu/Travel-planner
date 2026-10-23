@@ -26,6 +26,7 @@ interface SerpProperty {
   reviews?: number;
   free_cancellation?: boolean;
   deal?: string;
+  images?: { thumbnail?: string; original_image?: string }[];
 }
 
 export interface SerpHotelsResponse {
@@ -104,6 +105,7 @@ export function parseSerpHotels(json: SerpHotelsResponse, q: HotelQuery): HotelO
       lng: p.gps_coordinates?.longitude,
       bookingUrl: p.link ?? url,
       propertyToken: p.property_token,
+      imageUrl: p.images?.find((i) => i.thumbnail?.startsWith("https://"))?.thumbnail,
       raw: p,
     });
   }

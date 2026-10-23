@@ -236,7 +236,7 @@ async function seedTrips() {
     "#22d3ee",
   );
   await nyeAlt(
-    { name: "Lights All Night", city: "Dallas", venue: "Fair Park", start: "2026-12-30", end: "2026-12-31", genres: ["house", "bass", "big room"], lineupHighlights: ["Tiësto", "Chris Lake", "Subtronics", "Gryffin"], airports: ["DFW", "DAL"] },
+    { name: "Lights All Night", officialUrl: "https://lightsallnight.com", city: "Dallas", venue: "Fair Park", start: "2026-12-30", end: "2026-12-31", genres: ["house", "bass", "big room"], lineupHighlights: ["Tiësto", "Chris Lake", "Subtronics", "Gryffin"], airports: ["DFW", "DAL"] },
     { label: "2-day GA (tier 2)", quoted: 229.95, source: "Lights All Night official", notes: "Single day $119.95." },
     "#facc15",
   );
@@ -356,6 +356,7 @@ async function seedTrips() {
   const ASIA = "Asia spring 2027";
   const gmo = await upsertEvent({
     name: "GMO Sonic",
+    officialUrl: "https://gmosonic.com",
     city: "Tokyo",
     country: "JP",
     region: "Asia",
@@ -424,14 +425,25 @@ async function seedDiscovery() {
     ["Bass Canyon", "George, WA", "2027-08-13", "2027-08-15"],
     ["North Coast / ARC", "Chicago", "2027-09-03", "2027-09-06"],
   ];
+  // Official sites (used for images and links); others can be added on Discover.
+  const officialSites: Record<string, string> = {
+    Movement: "https://movement.us",
+    "Beyond Wonderland Midwest": "https://beyondwonderland.com",
+    "Beyond Wonderland at the Gorge": "https://beyondwonderland.com",
+    "Bass Canyon": "https://basscanyon.com",
+    "North Coast / ARC": "https://northcoastfestival.com",
+    "Breakaway Tampa": "https://breakawayfestival.com",
+    "Breakaway Atlanta": "https://breakawayfestival.com",
+    "Groove Cruise Miami": "https://groovecruise.com",
+  };
   for (const [name, city, start, end, drivable] of us) {
     await upsertEvent({
-      name, city, start, end, genres: [], lineupHighlights: [], airports: [],
+      name, city, start, end, genres: [], lineupHighlights: [], airports: [], officialUrl: officialSites[name] ?? null,
       drivableFromBoston: !!drivable, source: "Edmtrain (spec seed)",
       notes: name === "Neon City" ? "Free event." : undefined,
     });
   }
-  await upsertEvent({ name: "Lost Lands", city: "Legend Valley, OH", start: "2027-09-17", end: "2027-09-19", datesTentative: true, genres: ["dubstep", "bass"], lineupHighlights: [], airports: [], source: "Edmtrain (spec seed)", notes: "September, dates TBA." });
+  await upsertEvent({ name: "Lost Lands", officialUrl: "https://lostlandsfestival.com", city: "Legend Valley, OH", start: "2027-09-17", end: "2027-09-19", datesTentative: true, genres: ["dubstep", "bass"], lineupHighlights: [], airports: [], source: "Edmtrain (spec seed)", notes: "September, dates TBA." });
 
   const asia: [string, string, string, string, string, boolean?][] = [
     ["Ultra Taiwan", "Taipei", "TW", "2026-11-14", "2026-11-14"],

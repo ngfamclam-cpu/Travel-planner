@@ -18,13 +18,15 @@ const STATUS: Record<string, { text: string; cls: string }> = {
 
 const ACCESS = { api: "API", page: "page check", manual: "manual" } as const;
 
-function Row({ r }: { r: TicketRow }) {
+function Row({ r, icon }: { r: TicketRow; icon: boolean }) {
   const st = STATUS[r.status] ?? { text: r.status, cls: "" };
   const q = r.latest;
   return (
     <div className={`li ${r.risky ? "risky" : ""}`} style={{ opacity: r.enabled ? 1 : 0.5 }}>
       <div className="li-head">
         <div style={{ flex: "1 1 200px" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {icon && <img src={`/media/platform-${r.platform}-icon`} alt="" className="plat-icon" />}
           <strong>{r.name}</strong>{" "}
           <span className="chip">{ACCESS[r.access]}</span>{" "}
           <span className={`chip ${st.cls}`} title={r.lastError ?? undefined}>{st.text}</span>
@@ -85,7 +87,7 @@ function Row({ r }: { r: TicketRow }) {
   );
 }
 
-export function TicketTracker({ t, showEventName = false }: { t: EventTickets; showEventName?: boolean }) {
+export function TicketTracker({ t, showEventName = false, icons = new Set<string>() }: { t: EventTickets; showEventName?: boolean; icons?: Set<string> }) {
   const low = t.lowest;
   const underTarget = low && t.target != null && low.allIn <= t.target;
   return (
@@ -107,7 +109,7 @@ export function TicketTracker({ t, showEventName = false }: { t: EventTickets; s
         <Sparkline points={t.history} />
       </div>
 
-      {t.rows.map((r) => <Row key={r.watchId} r={r} />)}
+      {t.rows.map((r) => <Row key={r.watchId} r={r} icon={icons.has(r.platform)} />)}
 
       <details>
         <summary>🎯 Target price &amp; ticket type</summary>

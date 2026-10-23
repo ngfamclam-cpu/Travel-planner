@@ -12,7 +12,8 @@
       "hotel_class": "4-star hotel",
       "extracted_hotel_class": 4,
       "overall_rating": 4.4,
-      "reviews": 2310
+      "reviews": 2310,
+      "images": [{ "thumbnail": "https://lh5.googleusercontent.com/brickell.jpg", "original_image": "https://example.com/big.jpg" }]
     },
     {
       "type": "hotel",

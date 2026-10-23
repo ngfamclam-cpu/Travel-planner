@@ -3,6 +3,7 @@ import { eventClashes, matchingArtists, setupChecklist, toISODate } from "@rave-
 import { prisma } from "@rave-run/db";
 import { AlertList } from "@/components/AlertList";
 import { PlanButton } from "@/components/Toggles";
+import { Thumb } from "@/components/Thumb";
 import { getSettings, listTrips, openAlerts, providerHealth, savingsSummary, type TripView } from "@/lib/data";
 import { fmtRange, usd } from "@/lib/format";
 import { keyStatus } from "@/lib/keys";
@@ -13,7 +14,9 @@ function TripBar({ t, max }: { t: TripView; max: number }) {
   const pct = (n: number) => `${max > 0 ? (n / max) * 100 : 0}%`;
   return (
     <div className="card stripe" style={{ ["--stripe" as string]: t.color }}>
-      <Link href={`/trips/${t.id}`} style={{ display: "block", color: "inherit" }}>
+      <Link href={`/trips/${t.id}`} className="with-thumb" style={{ color: "inherit" }}>
+        <Thumb src={t.event?.heroUrl} name={t.event?.name ?? t.name} color={t.color} size={52} />
+        <div className="grow">
         <div className="spread">
           <strong>{t.name}</strong>
           <span className="big num" style={{ fontSize: "1.25rem" }}>{usd(t.totals.total)}</span>
@@ -34,6 +37,7 @@ function TripBar({ t, max }: { t: TripView; max: number }) {
           <span style={{ width: pct(t.totals.booked), background: "var(--good)" }} />
           <span style={{ width: pct(t.totals.quoted), background: "var(--info)" }} />
           <span style={{ width: pct(t.totals.estimated), background: "var(--warn)", opacity: 0.7 }} />
+        </div>
         </div>
       </Link>
       <div style={{ marginTop: 8 }}>

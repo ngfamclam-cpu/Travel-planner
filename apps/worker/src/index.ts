@@ -1,7 +1,7 @@
 // Rave Run worker: scheduled scrapes and price snapshots. All schedules in America/New_York (spec §4).
 import cron from "node-cron";
 import { prisma } from "@rave-run/db";
-import { fetchEdmtrainFestivals, fetchTicketmasterFestivals, findEventPage, flightProvider, flightProviders, geocode, googlePlaces, hotelProvider, osmPlaces, ticketCheckers } from "@rave-run/providers";
+import { fetchEdmtrainFestivals, fetchImage, fetchTicketmasterFestivals, findEventPage, flightProvider, flightProviders, geocode, googlePlaces, hotelProvider, osmPlaces, pageImageUrls, ticketCheckers } from "@rave-run/providers";
 import { mergeSettings } from "@rave-run/core";
 import { pgQueryCache } from "./cache";
 import { runFlightJob } from "./jobs/flights";
@@ -14,6 +14,7 @@ import { briefIfDue, runBrief, type BriefDeps } from "./jobs/brief";
 import { writeSummary } from "./brief/summary";
 import { runGuides, type GuideDeps } from "./jobs/guides";
 import { runSavingsCheck } from "./jobs/savings";
+import { runImages, type ImageDeps } from "./jobs/images";
 import { claudeGuideWriter } from "./guides/claude";
 import { JobRunner, settingsLastRunStore } from "./scheduler";
 
@@ -153,6 +154,33 @@ async function guideRequests() {
   }
 }
 
+const imageDeps: ImageDeps = {
+  pageImageUrls: (u) => pageImageUrls(u),
+  fetchImage: (u, maxBytes) => fetchImage(u, { maxBytes }),
+  pauseMs: 1500,
+};
+
+async function images() {
+  try {
+    await runImages(prisma, imageDeps);
+  } catch (e) {
+    console.error("Images crashed:", e);
+  }
+}
+
+let newImagesRunning = false;
+async function newImages() {
+  if (newImagesRunning) return;
+  newImagesRunning = true;
+  try {
+    await runImages(prisma, imageDeps, { onlyNew: true, limit: 5, log: () => {} });
+  } catch (e) {
+    console.error("New images crashed:", e);
+  } finally {
+    newImagesRunning = false;
+  }
+}
+
 let briefRunning = false;
 async function brief() {
   if (briefRunning) return;
@@ -177,6 +205,7 @@ async function main() {
       { name: "signals", run: signals },
       { name: "discovery", run: discovery, catchUpHours: 24 * 7 },
       { name: "guides", run: guides, catchUpHours: 24 * 7 },
+      { name: "images", run: images, catchUpHours: 24 * 7 },
       { name: "prune", run: prune },
     ],
     settingsLastRunStore(prisma),
@@ -202,6 +231,9 @@ async function main() {
   // Guides: weekly refresh (Sundays), plus "Build guide now" requests from the trip page every 5 minutes.
   cron.schedule("15 4 * * 0", () => runner.scheduled("guides"), { timezone: TZ });
   cron.schedule("*/5 * * * *", guideRequests, { timezone: TZ });
+  // Images: weekly sweep (Saturdays), plus events that just got an official site, every 5 minutes.
+  cron.schedule("20 4 * * 6", () => runner.scheduled("images"), { timezone: TZ });
+  cron.schedule("*/5 * * * *", newImages, { timezone: TZ });
   cron.schedule("30 3 * * *", () => runner.scheduled("prune"), { timezone: TZ });
   cron.schedule("45 6 * * 1", () => runner.scheduled("discovery"), { timezone: TZ }); // Mondays
   // Missed runs (computer off or asleep): check on startup and every hour.

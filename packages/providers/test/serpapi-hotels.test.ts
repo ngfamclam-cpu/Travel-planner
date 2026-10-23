@@ -17,7 +17,7 @@ describe("SerpApi Google Hotels", () => {
   it("parses hotels, skips rentals and unpriced, handles string prices", () => {
     const offers = parseSerpHotels(fixture, q);
     expect(offers.map((o) => o.name)).toEqual(["Brickell Test Hotel", "String Price Inn"]);
-    expect(offers[0]).toMatchObject({ total: 1556, pricePerNight: 389, stars: 4, rating5: 4.4, refundable: true, bookingUrl: "https://example.com/brickell" });
+    expect(offers[0]).toMatchObject({ total: 1556, pricePerNight: 389, stars: 4, rating5: 4.4, refundable: true, bookingUrl: "https://example.com/brickell", imageUrl: "https://lh5.googleusercontent.com/brickell.jpg" });
     // No total_rate: per night × 4 nights. Property flag overrides the filter.
     expect(offers[1]).toMatchObject({ total: 4080, pricePerNight: 1020, stars: 3, refundable: false });
   });

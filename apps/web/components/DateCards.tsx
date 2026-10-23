@@ -66,7 +66,8 @@ export function DateCards({ tripId, data }: { tripId: string; data: TripCards })
                 )}
                 {card.needsHotel && (
                   <li>
-                    <span>🏨</span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {h?.imageUrl ? <img src={h.imageUrl} alt="" className="hotel-photo" style={{ width: 18, height: 18, borderRadius: 4 }} loading="lazy" referrerPolicy="no-referrer" /> : <span>🏨</span>}
                     {h ? (
                       <span>
                         <strong className="num">{usd(h.total)}</strong> {h.url ? <a href={h.url} target="_blank" rel="noreferrer">{h.name}</a> : h.name}{" "}

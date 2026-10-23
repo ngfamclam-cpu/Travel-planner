@@ -29,6 +29,7 @@ export interface HotelSnap {
   rating5: number | null;
   refundable: boolean | null;
   url: string | null;
+  imageUrl?: string | null;
   fetchedAt: Date;
 }
 

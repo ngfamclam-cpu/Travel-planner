@@ -73,6 +73,7 @@ const TIER_ORDER: HotelTier[] = ["cheapest", "value", "rated", "pinned", "rental
 
 export interface HotelOption {
   tier: HotelTier;
+  imageUrl: string | null;
   name: string;
   total: number;
   perNight: number;
@@ -132,7 +133,7 @@ export interface TripView {
   nights: number;
   flexDays: number;
   notes: string | null;
-  event: { id: string; name: string; city: string; country: string; venue: string | null; start: string; end: string; lineup: string[]; officialUrl: string | null; ticketUrl: string | null; notes: string | null } | null;
+  event: { id: string; name: string; city: string; country: string; venue: string | null; start: string; end: string; lineup: string[]; officialUrl: string | null; ticketUrl: string | null; notes: string | null; heroUrl: string | null; iconUrl: string | null } | null;
   items: LineItemView[];
   totals: TripTotals;
   traps: SeasonalTrap[];
@@ -223,6 +224,7 @@ function toView(t: TripRow, all: TripLike[], ctx: CardCtx): TripView {
               .sort((a, b) => TIER_ORDER.indexOf(a.tier as HotelTier) - TIER_ORDER.indexOf(b.tier as HotelTier))
               .map((s) => ({
                 tier: s.tier as HotelTier,
+                imageUrl: s.imageUrl,
                 name: s.hotelName ?? "hotel",
                 total: Number(s.totalPrice),
                 perNight: Number(s.price),
@@ -266,6 +268,8 @@ function toView(t: TripRow, all: TripLike[], ctx: CardCtx): TripView {
           officialUrl: t.event.officialUrl,
           ticketUrl: t.event.ticketUrl,
           notes: t.event.notes,
+          heroUrl: t.event.heroMediaId ? `/media/event-${t.event.id}-hero` : null,
+          iconUrl: t.event.iconMediaId ? `/media/event-${t.event.id}-icon` : null,
         }
       : null,
     items,
@@ -388,6 +392,7 @@ export async function tripDateCards(tripId: string, requestedTier?: string): Pro
       rating5: s.rating,
       refundable: s.refundable,
       url: s.bookingUrl,
+      imageUrl: s.imageUrl,
       fetchedAt: s.fetchedAt,
     }));
 
@@ -585,4 +590,10 @@ export async function savingsSummary() {
     rows.map((r) => ({ lineItemId: r.lineItemId, date: toISODate(r.date), freeBest: num(r.freeBestPrice), paidBest: num(r.paidBestPrice) })),
     month,
   );
+}
+
+/** Which ticket platforms have a saved logo (served at /media/platform-<id>-icon). */
+export async function platformIcons(): Promise<Set<string>> {
+  const rows = await prisma.media.findMany({ where: { key: { startsWith: "platform-" } }, select: { key: true } });
+  return new Set(rows.map((r) => r.key.replace(/^platform-/, "").replace(/-icon$/, "")));
 }

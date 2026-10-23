@@ -53,6 +53,10 @@ model Event {
   airports         String[] // destination airports to search, e.g. {MIA,FLL}
   drivableFromBoston Boolean    @default(false) @map("drivable_from_boston")
   officialUrl      String?      @map("official_url")
+  // Images pulled from the event's own site (og:image / icon), stored in `media`.
+  heroMediaId      String?      @map("hero_media_id")
+  iconMediaId      String?      @map("icon_media_id")
+  imagesCheckedAt  DateTime?    @map("images_checked_at")
   // Edmtrain's terms: show their event link unmodified wherever their data appears.
   edmtrainUrl      String?      @map("edmtrain_url")
   // {"edmtrain": "123", "ticketmaster": "G5v..."}: ids from discovery sources, for de-duplication.
@@ -186,6 +190,8 @@ model PriceSnapshot {
   rating          Float?
   insightLabel    String?  @map("insight_label")
   refundable      Boolean?
+  /** Hotel photo URL from the source (Google Hotels thumbnail). */
+  imageUrl        String?  @map("image_url")
   rank            Int? // position within one fetch (hotels keep the top few options)
   // Hotels: which pick this row is for a date card: cheapest | value | rated | pinned | rental
   tier            String?
@@ -397,4 +403,17 @@ model ArrivalGuide {
   requestedAt DateTime? @map("requested_at")
 
   @@map("arrival_guides")
+}
+
+// Images fetched from festivals' and ticket sites' own pages, served by the app (/media/<key>)
+// so they load offline and don't depend on hotlinking.
+model Media {
+  id          String   @id @default(cuid())
+  key         String   @unique // "event-<id>-hero", "platform-ticketmaster-icon"
+  sourceUrl   String   @map("source_url")
+  contentType String   @map("content_type")
+  data        Bytes
+  fetchedAt   DateTime @default(now()) @map("fetched_at")
+
+  @@map("media")
 }

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { TicketTracker } from "@/components/TicketTracker";
-import { trackedEvents } from "@/lib/data";
+import { platformIcons, trackedEvents } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
 export default async function Tickets() {
-  const events = await trackedEvents();
+  const [events, icons] = await Promise.all([trackedEvents(), platformIcons()]);
   return (
     <>
       <h1>Tickets</h1>
@@ -14,7 +14,7 @@ export default async function Tickets() {
         Events are tracked automatically when they have a trip; track others from <Link href="/events">Discover</Link>.
       </p>
       {events.length === 0 && <p className="muted">Nothing tracked yet. The worker sets up tracking on its next run (6:20 AM ET), or open a trip.</p>}
-      {events.map((t) => <TicketTracker key={t.eventId} t={t} showEventName />)}
+      {events.map((t) => <TicketTracker key={t.eventId} t={t} showEventName icons={icons} />)}
     </>
   );
 }

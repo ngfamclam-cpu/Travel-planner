@@ -14,3 +14,4 @@ export * from "./events/edmtrain";
 export * from "./events/ticketmaster";
 export * from "./places/osm";
 export * from "./places/google";
+export * from "./media/pageImages";

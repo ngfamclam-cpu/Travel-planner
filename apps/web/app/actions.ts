@@ -313,6 +313,20 @@ export async function addTripForEvent(f: FormData) {
   redirect(`/trips/${trip.id}`);
 }
 
+/** Sets an event's official site; the worker fetches its banner and logo within a few minutes. */
+export async function setEventSite(f: FormData) {
+  const eventId = str(f, "eventId");
+  const raw = str(f, "officialUrl");
+  let officialUrl: string | null = null;
+  if (raw) {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Use an http(s) link");
+    officialUrl = u.toString();
+  }
+  await prisma.event.update({ where: { id: eventId }, data: { officialUrl, imagesCheckedAt: null } });
+  revalidatePath("/events");
+}
+
 // ---------- settings ----------
 
 async function putSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {

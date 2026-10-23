@@ -33,6 +33,8 @@ export interface HotelOffer {
   lng?: number;
   bookingUrl?: string;
   propertyToken?: string;
+  /** Photo from the source (Google Hotels thumbnail). */
+  imageUrl?: string;
   raw?: unknown;
 }
 
