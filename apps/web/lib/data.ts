@@ -3,7 +3,9 @@ import {
   addDays,
   buildDateCards,
   cheapestTicket,
+  categoryFor,
   computeSurge,
+  pickCards,
   latestPerPlatform,
   lineTotal,
   lowestTicket,
@@ -29,6 +31,8 @@ import {
   type HotelSearchSpec,
   type HotelTier,
   type CardPrice,
+  type CardPick,
+  type CardLike,
   type DateCard,
   type FlightSnap,
   type HotelSnap,
@@ -51,6 +55,7 @@ const tripInclude = {
     orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
     include: {
       card: true,
+      redemptions: { orderBy: { createdAt: "desc" as const }, take: 1 },
       snapshots: { where: { isBaseline: false }, orderBy: { fetchedAt: "asc" as const }, take: 600 },
     },
   },
@@ -86,6 +91,10 @@ export interface LineItemView {
   signal: string | null;
   signalReason: string | null;
   signalAt: Date | null;
+  /** Best card for this purchase (spec §8); alternatives after it. */
+  cardPicks: CardPick[];
+  /** Latest saved award option. */
+  redemption: { points: number; taxesFees: number; cashPrice: number; cpp: number; verdict: string } | null;
   estAmount: number | null;
   quotedAmount: number | null;
   bookedAmount: number | null;
@@ -151,11 +160,20 @@ function matchesDates(s: SnapRow, kind: string, arrive: string, depart: string, 
   return o >= addDays(arrive, -flex) && o <= addDays(arrive, flex) && r >= addDays(depart, -flex) && r <= addDays(depart, flex);
 }
 
-function toView(t: TripRow, all: TripLike[]): TripView {
+interface CardCtx {
+  cards: CardLike[];
+  valueOf: (currency: string | null) => number;
+}
+
+function toView(t: TripRow, all: TripLike[], ctx: CardCtx): TripView {
   const arrive = toISODate(t.arriveDate);
   const depart = toISODate(t.departDate);
+  const flightDests = t.lineItems.flatMap((l) => (l.kind === "flight" ? ((l.searchSpec as FlightSearchSpec | null)?.destinations ?? []) : []));
+  const abroad = (t.event ? t.event.country : destinationFromAirports(flightDests).country) !== "US";
   const items: LineItemView[] = t.lineItems.map((li) => {
     const quoted = num(li.quotedAmount);
+    const amount = (num(li.bookedAmount) ?? quoted ?? num(li.estAmount) ?? 0) * li.qty;
+    const red = li.redemptions[0];
     const snaps = li.snapshots.filter((s) => matchesDates(s, li.kind, arrive, depart, t.flexDays));
     const latest = snaps.at(-1);
     const hotelSpec = li.kind === "hotel" ? ((li.searchSpec ?? {}) as HotelSearchSpec) : null;
@@ -175,6 +193,10 @@ function toView(t: TripRow, all: TripLike[]): TripView {
       signal: li.signal,
       signalReason: li.signalReason,
       signalAt: li.signalAt,
+      cardPicks: ctx.cards.length ? pickCards(ctx.cards, categoryFor(li.kind), { abroad, amount, valueOf: ctx.valueOf }) : [],
+      redemption: red
+        ? { points: red.points, taxesFees: Number(red.taxesFees), cashPrice: Number(red.cashPrice), cpp: Number(red.cpp), verdict: red.verdict }
+        : null,
       estAmount: num(li.estAmount),
       quotedAmount: quoted,
       bookedAmount: num(li.bookedAmount),
@@ -252,10 +274,25 @@ function toView(t: TripRow, all: TripLike[]): TripView {
   };
 }
 
+export async function cardContext(): Promise<CardCtx> {
+  const [cards, settings] = await Promise.all([prisma.card.findMany(), getSettings()]);
+  return {
+    cards: cards.map((c) => ({
+      id: c.id,
+      name: c.name,
+      foreignFeePct: c.foreignFeePct == null ? null : Number(c.foreignFeePct),
+      pointsCurrency: c.pointsCurrency,
+      earnRules: (c.earnRules ?? {}) as Record<string, unknown>,
+      needsSetup: c.needsSetup,
+    })),
+    valueOf: (cur) => settings.pointValues[cur ?? "cash back"] ?? 1,
+  };
+}
+
 export async function listTrips(): Promise<TripView[]> {
-  const rows = await prisma.trip.findMany({ include: tripInclude, orderBy: [{ arriveDate: "asc" }] });
+  const [rows, ctx] = await Promise.all([prisma.trip.findMany({ include: tripInclude, orderBy: [{ arriveDate: "asc" }] }), cardContext()]);
   const all: TripLike[] = rows.map((t) => ({ id: t.id, name: t.name, status: t.status, arrive: toISODate(t.arriveDate), depart: toISODate(t.departDate), slot: t.slot }));
-  return rows.map((t) => toView(t, all));
+  return rows.map((t) => toView(t, all, ctx));
 }
 
 export async function getTrip(id: string): Promise<TripView | null> {

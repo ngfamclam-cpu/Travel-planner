@@ -168,3 +168,6 @@ legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
 .li.excluded .li-head .kind { opacity: .55; }
 .li.excluded .amt { text-decoration: line-through; opacity: .55; }
 .trip-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+
+/* Keys lives in Settings on phones (7 tabs don't fit) */
+@media (max-width: 759px) { .nav .nav-wide { display: none; } }

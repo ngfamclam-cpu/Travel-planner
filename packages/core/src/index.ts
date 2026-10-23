@@ -14,3 +14,4 @@ export * from "./airports";
 export * from "./discovery";
 export * from "./signals";
 export * from "./signals.config";
+export * from "./points";

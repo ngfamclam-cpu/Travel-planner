@@ -71,7 +71,7 @@ async function seedSettingsAndCards() {
       foreignFeePct: 3,
       pointsCurrency: "Citi TYP",
       transferEnabled: null,
-      earnRules: { top_category: 5, top_category_cap_per_cycle: 500, eligible: ["live_entertainment", "travel", "restaurants"], default: 1 },
+      earnRules: { top_category: 5, top_category_cap_per_cycle: 500, top_category_use: "live_entertainment", eligible: ["live_entertainment", "travel", "restaurants"], default: 1 },
       notes: "Transfers only when pooled with a Strata Premier/Elite.",
     },
     {

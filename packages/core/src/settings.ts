@@ -37,6 +37,8 @@ export interface AppSettings {
   crowdvoltGapAlert: number;
   /** Artists to look for in newly discovered events. */
   favoriteArtists: string[];
+  /** What a point is worth to you, in cents, when comparing cards (cash back = 1). */
+  pointValues: Record<string, number>;
   asiaDestination: "undecided" | "tokyo" | "china";
   nyeChoice: string; // "undecided" or trip id
 }
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   status: { airline: "", hotel: "" },
   ticketFeePct: {},
   crowdvoltGapAlert: 20,
+  pointValues: { "Amex MR": 1.5, "Citi TYP": 1.0, "Chase UR": 1.0, "cash back": 1.0 },
   favoriteArtists: [
     "Subtronics", "Excision", "Wooli", "Tape B", "Dabin", "Zeds Dead", "Knock2", "RL Grime", "Chris Lake",
     "Tiësto", "John Summit", "Fisher", "Kaskade", "Marshmello", "DJ Snake", "Seven Lions", "Illenium", "Griz", "Slander", "Levity", "ISOxo",

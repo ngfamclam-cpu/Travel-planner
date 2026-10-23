@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { DEFAULT_SETTINGS, mergeSettings, nights, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec, type HotelTier } from "@rave-run/core";
+import { centsPerPoint, DEFAULT_SETTINGS, mergeSettings, nights, redeemVerdict, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec, type HotelTier } from "@rave-run/core";
 import { createTripFromEvent, day, ensureTicketWatches, prisma, recordTicketPrice, refreshTripQuotes, type ChosenOption, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
 import { TICKET_PLATFORMS, type TicketPlatformId } from "@rave-run/core";
 import { SESSION_COOKIE, authConfigured, sessionToken, timingSafeEqual } from "@/lib/auth";
@@ -362,11 +362,27 @@ export async function saveSettings(f: FormData) {
   const strata = str(f, "citiStrataVersion");
   if (strata && strata !== "unknown") {
     const premium = strata !== "strata";
+    // Seed earn rules for Strata Premier (verify on Citi's site); other versions: edit the rules in Cards.
+    const earnRules =
+      strata === "strata_premier"
+        ? { flights_direct: 3, hotels: 3, restaurants: 3, supermarkets: 3, gas: 3, citi_travel_hotels: 10, default: 1 }
+        : undefined;
     await prisma.card.updateMany({
       where: { name: "Citi Strata" },
-      data: { version: strata, needsSetup: false, transferEnabled: premium, foreignFeePct: premium ? 0 : 3 },
+      data: {
+        version: strata,
+        needsSetup: !earnRules,
+        transferEnabled: premium,
+        foreignFeePct: premium ? 0 : 3,
+        ...(earnRules ? { earnRules, notes: "Seed earn rules for Strata Premier: verify on Citi's site and edit if needed." } : { notes: "Set this card's earn rules in Settings → Cards." }),
+      },
     });
     await prisma.card.updateMany({ where: { name: "Citi Custom Cash" }, data: { transferEnabled: premium } });
+    // Transferable points are worth more than cash back: value TYP like MR unless you've changed it.
+    if (premium && current.pointValues["Citi TYP"] === 1) await putSetting("pointValues", { ...current.pointValues, "Citi TYP": 1.5 });
+  }
+  if (sapphire === "yes" && current.pointValues["Chase UR"] === 1) {
+    await putSetting("pointValues", { ...(await getPointValues()), "Chase UR": 1.5 });
   }
   revalidatePath("/settings");
   revalidatePath("/");
@@ -497,4 +513,69 @@ export async function saveTicketSettings(f: FormData) {
   if (Number.isFinite(gap) && gap >= 0) await putSetting("crowdvoltGapAlert", gap);
   revalidatePath("/settings");
   revalidatePath("/tickets");
+}
+
+// ---------- points ----------
+
+async function getPointValues(): Promise<Record<string, number>> {
+  return mergeSettings(await prisma.setting.findMany()).pointValues;
+}
+
+/** Save an award option against a line item (spec §6 redemptions). */
+export async function saveRedemption(f: FormData) {
+  const lineItemId = str(f, "lineItemId");
+  const cash = money(f, "cash");
+  const taxes = money(f, "taxes") ?? 0;
+  const points = Math.round(Number(str(f, "points").replace(/[,\s]/g, "")));
+  if (!lineItemId || cash == null || !(points > 0)) throw new Error("Need a trip item, cash price and points");
+  const settings = mergeSettings(await prisma.setting.findMany());
+  const cpp = centsPerPoint(cash, taxes, points);
+  const li = await prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } });
+  await prisma.redemption.create({
+    data: { lineItemId, points, taxesFees: taxes, cashPrice: cash, cpp, verdict: redeemVerdict(cpp, settings.cppFloor).verdict },
+  });
+  refresh(li.tripId);
+  revalidatePath("/points");
+  redirect(`/points?saved=1`);
+}
+
+export async function deleteRedemption(f: FormData) {
+  const r = await prisma.redemption.delete({ where: { id: str(f, "id") }, include: { lineItem: true } });
+  refresh(r.lineItem.tripId);
+  revalidatePath("/points");
+}
+
+export async function savePointValues(f: FormData) {
+  const values = { ...(await getPointValues()) };
+  for (const key of Object.keys(values)) {
+    const v = Number(str(f, `val_${key}`));
+    if (Number.isFinite(v) && v > 0 && v < 10) values[key] = v;
+  }
+  await putSetting("pointValues", values);
+  revalidatePath("/points");
+  refresh();
+}
+
+/** Edit a card's earn rules (JSON) and foreign fee: card terms change, so they stay editable. */
+export async function saveCard(f: FormData) {
+  const id = str(f, "id");
+  let rules: unknown;
+  try {
+    rules = JSON.parse(str(f, "earnRules"));
+  } catch {
+    throw new Error("Earn rules must be valid JSON, e.g. {\"restaurants\": 4, \"default\": 1}");
+  }
+  if (!rules || typeof rules !== "object" || Array.isArray(rules)) throw new Error("Earn rules must be a JSON object");
+  const fee = str(f, "foreignFeePct");
+  await prisma.card.update({
+    where: { id },
+    data: {
+      earnRules: rules as Prisma.InputJsonValue,
+      foreignFeePct: fee === "" ? null : Math.max(0, Number(fee)),
+      pointsCurrency: str(f, "pointsCurrency") || null,
+      needsSetup: false,
+    },
+  });
+  revalidatePath("/settings");
+  refresh();
 }

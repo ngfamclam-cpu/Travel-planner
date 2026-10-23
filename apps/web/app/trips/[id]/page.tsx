@@ -113,6 +113,30 @@ function LineItem({ t, li, cards, homeCity }: { t: TripView; li: LineItemView; c
         <PriceTag li={li} />
       </div>
       <SignalReason li={li} />
+      {li.included && li.cardPicks[0] && li.bookedAmount == null && (
+        <div>
+          <small>
+            💳 <strong>{li.cardPicks[0].name}</strong>: {li.cardPicks[0].reason}
+            {li.cardPicks[0].notes.length > 0 && <> · {li.cardPicks[0].notes.join(" · ")}</>}
+            {li.cardName && li.cardName !== li.cardPicks[0].name && <> · you picked {li.cardName}</>}
+          </small>
+        </div>
+      )}
+      {li.redemption && (
+        <div>
+          <small>
+            🎁 Award option: {li.redemption.points.toLocaleString()} pts + {usd(li.redemption.taxesFees)} → {li.redemption.cpp.toFixed(2)}¢/pt ·{" "}
+            <strong>{li.redemption.verdict === "redeem" ? "use points" : "pay cash"}</strong>
+          </small>
+        </div>
+      )}
+      {(li.kind === "flight" || li.kind === "hotel") && li.included && li.bookedAmount == null && (
+        <div>
+          <small>
+            <a href={`/points?item=${li.id}${li.quotedAmount != null ? `&cash=${li.quotedAmount * li.qty}` : ""}`}>Check a points option →</a>
+          </small>
+        </div>
+      )}
       <div style={{ marginTop: 6 }}><Provenance li={li} /></div>
       {li.notes && <div><small>{li.notes}</small></div>}
       {li.hotel && <HotelDetails li={li} />}

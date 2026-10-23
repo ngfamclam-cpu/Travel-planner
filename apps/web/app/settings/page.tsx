@@ -1,6 +1,6 @@
 import { prisma } from "@rave-run/db";
 import { TICKET_PLATFORMS } from "@rave-run/core";
-import { resetAirports, savePoints, saveSettings, saveTicketSettings } from "@/app/actions";
+import { resetAirports, saveCard, savePoints, saveSettings, saveTicketSettings } from "@/app/actions";
 import { getCards, getPoints, getSettings } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,7 @@ export default async function Settings() {
   return (
     <>
       <h1>Settings</h1>
+      <p><a href="/setup">API keys &amp; data sources →</a></p>
       <form action={saveSettings}>
         <section className="card" id="airports">
           <h2 style={{ marginTop: 0 }}>Origin airports</h2>
@@ -124,6 +125,27 @@ export default async function Settings() {
         <div className="row"><button type="submit">Save settings</button></div>
       </form>
       <form action={resetAirports} style={{ marginTop: 8 }}><button type="submit" className="ghost">Reset airports to defaults</button></form>
+
+      <section className="card" id="card-rules">
+        <h2 style={{ marginTop: 0 }}>Card earn rules</h2>
+        <p className="muted">
+          Used by the card picker. Card terms change: check your card's page and edit. Keys: <code>flights_direct</code>, <code>hotels</code>,{" "}
+          <code>travel</code>, <code>restaurants</code>, <code>live_entertainment</code>, <code>transit</code>, <code>default</code>; Custom Cash-style cards use{" "}
+          <code>top_category</code>, <code>eligible</code>, <code>top_category_use</code>, <code>top_category_cap_per_cycle</code>.
+        </p>
+        {cards.map((c) => (
+          <details key={c.id}>
+            <summary>{c.name}{c.needsSetup ? " (needs setup)" : ""}</summary>
+            <form action={saveCard} className="fields">
+              <input type="hidden" name="id" value={c.id} />
+              <div><label>Foreign fee %</label><input name="foreignFeePct" inputMode="decimal" defaultValue={c.foreignFeePct == null ? "" : Number(c.foreignFeePct)} /></div>
+              <div><label>Points currency</label><input name="pointsCurrency" defaultValue={c.pointsCurrency ?? ""} placeholder="Amex MR, Citi TYP, Chase UR, cash back" /></div>
+              <div className="wide"><label>Earn rules (JSON)</label><textarea name="earnRules" rows={3} defaultValue={JSON.stringify(c.earnRules)} style={{ fontFamily: "monospace", fontSize: 13 }} /></div>
+              <div className="wide"><button type="submit" className="ghost">Save {c.name}</button></div>
+            </form>
+          </details>
+        ))}
+      </section>
 
       <section className="card" id="tickets">
         <h2 style={{ marginTop: 0 }}>Ticket fees</h2>

@@ -19,7 +19,7 @@ Following the build order in the spec:
 | + | Ticket tracker: Ticketmaster, SeatGeek, StubHub, Vivid Seats, DICE, RA, CrowdVolt (NYC), Radiate (logged, never counted) + alerts | ✅ |
 | 5 | Event discovery: weekly Edmtrain + Ticketmaster festivals, de-duplicated, artist matches, clash flags | ✅ (needs their free keys) |
 | 6 | Buy signals: BUY NOW / WAIT / WATCH with reasons for flights, hotels and tickets; BUY NOW alerts | ✅ (rules in `packages/core/src/signals.config.ts`) |
-| 7 | Points & card engine | |
+| 7 | Points & cards: best card per expense (foreign fees abroad), cpp calculator with redeem/pay-cash verdict, saved award options, editable earn rules | ✅ |
 | 8 | Daily brief (push + email) | |
 | 9 | Arrival guides | |
 | 10 | Savings meter + paid tier | |
