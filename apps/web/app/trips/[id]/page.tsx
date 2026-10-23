@@ -4,7 +4,7 @@ import { HOTEL_TIER_LABEL, flightDestinationCity, googleFlightsUrl, googleHotels
 import { addLineItem, deleteLineItem, deleteTrip, pinHotel, trackTickets, updateLineItem, updateTrip } from "@/app/actions";
 import { AlertList } from "@/components/AlertList";
 import { IncludeSwitch, PlanButton } from "@/components/Toggles";
-import { InsightChip, PriceTag, Provenance } from "@/components/PriceTag";
+import { InsightChip, PriceTag, Provenance, SignalChip, SignalReason } from "@/components/PriceTag";
 import { Sparkline } from "@/components/Sparkline";
 import { DateCards } from "@/components/DateCards";
 import { TicketTracker } from "@/components/TicketTracker";
@@ -107,11 +107,12 @@ function LineItem({ t, li, cards, homeCity }: { t: TripView; li: LineItemView; c
               </span>
             )}
             {li.cardName && <span className="chip accent">{li.cardName}</span>}
-            <span className="chip" title="Buy/wait signals arrive in build step 6">signal: pending</span>
+            <SignalChip li={li} />
           </div>
         </div>
         <PriceTag li={li} />
       </div>
+      <SignalReason li={li} />
       <div style={{ marginTop: 6 }}><Provenance li={li} /></div>
       {li.notes && <div><small>{li.notes}</small></div>}
       {li.hotel && <HotelDetails li={li} />}

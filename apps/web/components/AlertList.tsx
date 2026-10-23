@@ -12,6 +12,7 @@ export interface AlertRow {
 
 const ICON: Record<string, string> = {
   rebook: "🔁",
+  buy_now: "🟢",
   ticket_target: "🎯",
   ticket_drop: "📉",
   ticket_onsale: "🎟",

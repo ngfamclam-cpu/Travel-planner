@@ -45,3 +45,22 @@ export function InsightChip({ label }: { label: string | null }) {
   const cls = label === "low" ? "good" : label === "high" ? "bad" : "info";
   return <span className={`chip ${cls}`} title="Google Flights price insight">Google: prices {label}</span>;
 }
+
+const SIGNAL_STYLE: Record<string, { cls: string; text: string }> = {
+  BUY_NOW: { cls: "good", text: "BUY NOW" },
+  WAIT: { cls: "warn", text: "WAIT" },
+  WATCH: { cls: "info", text: "WATCH" },
+  DONE: { cls: "", text: "DONE" },
+};
+
+/** BUY NOW / WAIT / WATCH chip (spec §7). */
+export function SignalChip({ li }: { li: LineItemView }) {
+  if (!li.included || !li.signal) return null;
+  const st = SIGNAL_STYLE[li.signal] ?? { cls: "", text: li.signal };
+  return <span className={`chip ${st.cls}`} title={li.signalReason ?? undefined} style={{ fontWeight: 700 }}>{st.text}</span>;
+}
+
+export function SignalReason({ li }: { li: LineItemView }) {
+  if (!li.included || !li.signal || !li.signalReason || li.signal === "DONE") return null;
+  return <div><small>💡 {li.signalReason}{li.signalAt ? ` · ${fmtWhen(li.signalAt)}` : ""}</small></div>;
+}

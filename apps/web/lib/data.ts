@@ -83,6 +83,9 @@ export interface LineItemView {
   qty: number;
   /** false = switched off: shown, not counted. */
   included: boolean;
+  signal: string | null;
+  signalReason: string | null;
+  signalAt: Date | null;
   estAmount: number | null;
   quotedAmount: number | null;
   bookedAmount: number | null;
@@ -169,6 +172,9 @@ function toView(t: TripRow, all: TripLike[]): TripView {
       label: li.label,
       qty: li.qty,
       included: li.included,
+      signal: li.signal,
+      signalReason: li.signalReason,
+      signalAt: li.signalAt,
       estAmount: num(li.estAmount),
       quotedAmount: quoted,
       bookedAmount: num(li.bookedAmount),

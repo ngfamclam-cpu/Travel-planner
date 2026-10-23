@@ -24,6 +24,9 @@ function TripBar({ t, max }: { t: TripView; max: number }) {
             {(t.status === "booked" || t.status === "done") && <span className={`chip ${t.status === "booked" ? "good" : ""}`}>{t.status}</span>}
             {t.totals.unpricedCount > 0 && <span className="chip">{t.totals.unpricedCount} not priced</span>}
             {t.totals.excludedCount > 0 && <span className="chip">{t.totals.excludedCount} not counted</span>}
+            {t.items.some((i) => i.included && i.signal === "BUY_NOW") && (
+              <span className="chip good" style={{ fontWeight: 700 }}>{t.items.filter((i) => i.included && i.signal === "BUY_NOW").length} to buy now</span>
+            )}
             {t.clashes.length > 0 && <span className="chip bad">clash</span>}
           </span>
         </div>

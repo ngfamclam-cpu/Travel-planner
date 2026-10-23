@@ -18,7 +18,7 @@ Following the build order in the spec:
 | + | Free flight source: Google Flights via the open-source fast-flights library (no key), SerpApi as fallback | ✅ |
 | + | Ticket tracker: Ticketmaster, SeatGeek, StubHub, Vivid Seats, DICE, RA, CrowdVolt (NYC), Radiate (logged, never counted) + alerts | ✅ |
 | 5 | Event discovery: weekly Edmtrain + Ticketmaster festivals, de-duplicated, artist matches, clash flags | ✅ (needs their free keys) |
-| 6 | Buy-signal engine | |
+| 6 | Buy signals: BUY NOW / WAIT / WATCH with reasons for flights, hotels and tickets; BUY NOW alerts | ✅ (rules in `packages/core/src/signals.config.ts`) |
 | 7 | Points & card engine | |
 | 8 | Daily brief (push + email) | |
 | 9 | Arrival guides | |

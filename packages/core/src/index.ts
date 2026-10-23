@@ -12,3 +12,5 @@ export * from "./cards";
 export * from "./tickets";
 export * from "./airports";
 export * from "./discovery";
+export * from "./signals";
+export * from "./signals.config";

@@ -8,6 +8,7 @@ import { runHotelJob } from "./jobs/hotels";
 import { runTicketJob } from "./jobs/tickets";
 import { runPrune } from "./jobs/prune";
 import { runDiscovery } from "./jobs/discovery";
+import { runSignals } from "./jobs/signals";
 import { JobRunner, settingsLastRunStore } from "./scheduler";
 
 const TZ = "America/New_York";
@@ -84,12 +85,22 @@ async function discovery() {
   }
 }
 
+async function signals() {
+  try {
+    await runSignals(prisma);
+  } catch (e) {
+    console.error("Signals crashed:", e);
+  }
+}
+
 async function main() {
   const runner = new JobRunner(
     [
       { name: "flights", run: flights },
       { name: "hotels", run: hotels },
       { name: "tickets", run: tickets },
+      // After the price jobs, so signals see today's prices.
+      { name: "signals", run: signals },
       { name: "discovery", run: discovery, catchUpHours: 24 * 7 },
       { name: "prune", run: prune },
     ],
@@ -104,6 +115,7 @@ async function main() {
   cron.schedule(FLIGHT_SCHEDULE, () => runner.scheduled("flights"), { timezone: TZ });
   cron.schedule(HOTEL_SCHEDULE, () => runner.scheduled("hotels"), { timezone: TZ });
   cron.schedule(TICKET_SCHEDULE, () => runner.scheduled("tickets"), { timezone: TZ });
+  cron.schedule("50 6 * * *", () => runner.scheduled("signals"), { timezone: TZ });
   cron.schedule("30 3 * * *", () => runner.scheduled("prune"), { timezone: TZ });
   cron.schedule("45 6 * * 1", () => runner.scheduled("discovery"), { timezone: TZ }); // Mondays
   // Missed runs (computer off or asleep): check on startup and every hour.

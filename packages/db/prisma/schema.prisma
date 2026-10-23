@@ -139,6 +139,11 @@ model LineItem {
   // Surge = event-window price ÷ baseline price for a normal week (spec §3).
   baselinePrice Decimal?        @map("baseline_price") @db.Decimal(10, 2)
   baselineAt    DateTime?       @map("baseline_at")
+  // Buy signal (spec §7): BUY_NOW | WAIT | WATCH | DONE, with the reason shown to the user.
+  signal          String?
+  signalReason    String?   @map("signal_reason")
+  signalAt        DateTime? @map("signal_at")
+  signalChangedAt DateTime? @map("signal_changed_at")
   // Hotels: what was booked ({ hotelName, stars, rating5, refundable, cancelBy, confirmation }), for rebook alerts.
   booking       Json?
   notes         String?

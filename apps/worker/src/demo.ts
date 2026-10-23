@@ -8,6 +8,7 @@ import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
 import { runTicketJob } from "./jobs/tickets";
 import { runDiscovery } from "./jobs/discovery";
+import { runSignals } from "./jobs/signals";
 
 const dow = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 1000, 7);
@@ -94,6 +95,7 @@ async function main() {
     await runFlightJob(prisma, flights, { now: at, budget: 500, log: () => {} });
     await runHotelJob(prisma, hotels, { now: at, budget: 500, log: () => {} });
     await runTicketJob(prisma, checkers, { now: at, findBudget: 100, log: () => {} });
+    await runSignals(prisma, { now: at, log: () => {} });
     // After day one, set a target just above the lowest NYC club price so a target alert shows up.
     if (d === 2 && club) {
       const low = await prisma.ticketPrice.findFirst({ where: { eventId: club.id, risky: false }, orderBy: { allInPrice: "asc" } });
