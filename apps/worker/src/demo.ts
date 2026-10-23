@@ -7,6 +7,7 @@ import type { FlightProvider, HotelProvider, ProviderResult, TicketCheck, Ticket
 import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
 import { runTicketJob } from "./jobs/tickets";
+import { runDiscovery } from "./jobs/discovery";
 
 const dow = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 1000, 7);
@@ -99,6 +100,22 @@ async function main() {
       if (low) await prisma.event.update({ where: { id: club.id }, data: { ticketTarget: Math.round(Number(low.allInPrice)) + 15, ticketTierHint: "GA" } });
     }
   }
+  // Two fake "discovered" festivals so Discover shows new events and artist matches.
+  await runDiscovery(
+    prisma,
+    [
+      {
+        name: "edmtrain",
+        configured: true,
+        envKey: "",
+        fetch: async () => [
+          { source: "edmtrain", externalId: "demo-1", name: "DEMO Bass Coast Fest", city: "Austin", country: "US", venue: "DEMO Park", start: "2027-06-18", end: "2027-06-20", artists: ["Subtronics", "Excision", "DEMO DJ"], url: null, festival: true },
+          { source: "edmtrain", externalId: "demo-2", name: "DEMO House Weekender", city: "Atlanta", country: "US", venue: "DEMO Hall", start: "2027-05-15", end: "2027-05-16", artists: ["DEMO House Act"], url: null, festival: true },
+        ],
+      },
+    ],
+    { log: () => {} },
+  );
   // Mark every tracked ticket price as demo, and add one hand-logged Radiate price.
   await prisma.ticketPrice.updateMany({ data: { source: "demo", note: "DEMO data (fake)" } });
   if (club) {

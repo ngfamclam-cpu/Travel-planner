@@ -1,12 +1,13 @@
 // Rave Run worker: scheduled scrapes and price snapshots. All schedules in America/New_York (spec §4).
 import cron from "node-cron";
 import { prisma } from "@rave-run/db";
-import { findEventPage, flightProviders, hotelProvider, ticketCheckers } from "@rave-run/providers";
+import { fetchEdmtrainFestivals, fetchTicketmasterFestivals, findEventPage, flightProviders, hotelProvider, ticketCheckers } from "@rave-run/providers";
 import { pgQueryCache } from "./cache";
 import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
 import { runTicketJob } from "./jobs/tickets";
 import { runPrune } from "./jobs/prune";
+import { runDiscovery } from "./jobs/discovery";
 import { JobRunner, settingsLastRunStore } from "./scheduler";
 
 const TZ = "America/New_York";
@@ -61,12 +62,35 @@ async function prune() {
   }
 }
 
+async function discovery() {
+  const env = process.env;
+  try {
+    await runDiscovery(prisma, [
+      {
+        name: "edmtrain",
+        configured: !!env.EDMTRAIN_API_KEY,
+        envKey: "EDMTRAIN_API_KEY",
+        fetch: (r) => fetchEdmtrainFestivals(env.EDMTRAIN_API_KEY!, r, { locationIds: env.EDMTRAIN_LOCATION_IDS }),
+      },
+      {
+        name: "ticketmaster",
+        configured: !!env.TICKETMASTER_API_KEY,
+        envKey: "TICKETMASTER_API_KEY",
+        fetch: (r) => fetchTicketmasterFestivals(env.TICKETMASTER_API_KEY!, r),
+      },
+    ]);
+  } catch (e) {
+    console.error("Discovery crashed:", e);
+  }
+}
+
 async function main() {
   const runner = new JobRunner(
     [
       { name: "flights", run: flights },
       { name: "hotels", run: hotels },
       { name: "tickets", run: tickets },
+      { name: "discovery", run: discovery, catchUpHours: 24 * 7 },
       { name: "prune", run: prune },
     ],
     settingsLastRunStore(prisma),
@@ -81,6 +105,7 @@ async function main() {
   cron.schedule(HOTEL_SCHEDULE, () => runner.scheduled("hotels"), { timezone: TZ });
   cron.schedule(TICKET_SCHEDULE, () => runner.scheduled("tickets"), { timezone: TZ });
   cron.schedule("30 3 * * *", () => runner.scheduled("prune"), { timezone: TZ });
+  cron.schedule("45 6 * * 1", () => runner.scheduled("discovery"), { timezone: TZ }); // Mondays
   // Missed runs (computer off or asleep): check on startup and every hour.
   const catchUp = (why: string) =>
     runner.catchUp(why).then((ran) => ran.length && console.log(`Caught up: ${ran.join(", ")}`), (e) => console.error("Catch-up failed:", e));

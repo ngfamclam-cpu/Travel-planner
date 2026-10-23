@@ -95,6 +95,12 @@ export default async function Settings() {
           <p className="muted"><small>Earn rules are seed values from the spec. Card terms change, so verify them. The card picker arrives in build step 7.</small></p>
         </section>
 
+        <section className="card" id="artists">
+          <h2 style={{ marginTop: 0 }}>Artists you follow</h2>
+          <p className="muted">New events with these artists are flagged on Discover and in the daily brief. One per line or comma-separated.</p>
+          <textarea name="favoriteArtists" rows={4} defaultValue={s.favoriteArtists.join(", ")} />
+        </section>
+
         <section className="card" id="status">
           <h2 style={{ marginTop: 0 }}>Status</h2>
           <div className="fields">

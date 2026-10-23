@@ -10,3 +10,5 @@ export * from "./tickets/seatgeek";
 export * from "./tickets/page";
 export * from "./tickets/finder";
 export * from "./flights/fastflights";
+export * from "./events/edmtrain";
+export * from "./events/ticketmaster";

@@ -17,7 +17,7 @@ Following the build order in the spec:
 | + | Date cards: every date combination priced end to end, with a hotel pick per card | ✅ |
 | + | Free flight source: Google Flights via the open-source fast-flights library (no key), SerpApi as fallback | ✅ |
 | + | Ticket tracker: Ticketmaster, SeatGeek, StubHub, Vivid Seats, DICE, RA, CrowdVolt (NYC), Radiate (logged, never counted) + alerts | ✅ |
-| 5 | Edmtrain + live event discovery | next |
+| 5 | Event discovery: weekly Edmtrain + Ticketmaster festivals, de-duplicated, artist matches, clash flags | ✅ (needs their free keys) |
 | 6 | Buy-signal engine | |
 | 7 | Points & card engine | |
 | 8 | Daily brief (push + email) | |

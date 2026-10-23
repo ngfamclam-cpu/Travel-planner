@@ -30,6 +30,8 @@ export function isDue(lastRun: Date | null, now: Date, minHours: number): boolea
 export interface Job {
   name: string;
   run: () => Promise<void>;
+  /** Catch-up threshold for this job (default: the runner's, 20h). Weekly jobs use ~7 days. */
+  catchUpHours?: number;
 }
 
 export interface RunnerOptions {
@@ -82,13 +84,14 @@ export class JobRunner {
 
   /** The scheduled (cron) run for a job. */
   scheduled(name: string): Promise<boolean> {
-    return this.runIfDue(name, this.scheduledMinHours, "scheduled");
+    const job = this.jobs.find((j) => j.name === name);
+    return this.runIfDue(name, Math.min(this.scheduledMinHours, job?.catchUpHours ?? Infinity), "scheduled");
   }
 
   /** Run every job whose last run is old enough, one after another (order matters: flights → hotels → tickets). */
   async catchUp(why = "catch-up"): Promise<string[]> {
     const ran: string[] = [];
-    for (const j of this.jobs) if (await this.runIfDue(j.name, this.catchUpAfterHours, why)) ran.push(j.name);
+    for (const j of this.jobs) if (await this.runIfDue(j.name, j.catchUpHours ?? this.catchUpAfterHours, why)) ran.push(j.name);
     return ran;
   }
 

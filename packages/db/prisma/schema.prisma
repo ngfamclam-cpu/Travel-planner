@@ -53,6 +53,10 @@ model Event {
   airports         String[] // destination airports to search, e.g. {MIA,FLL}
   drivableFromBoston Boolean    @default(false) @map("drivable_from_boston")
   officialUrl      String?      @map("official_url")
+  // Edmtrain's terms: show their event link unmodified wherever their data appears.
+  edmtrainUrl      String?      @map("edmtrain_url")
+  // {"edmtrain": "123", "ticketmaster": "G5v..."}: ids from discovery sources, for de-duplication.
+  externalIds      Json?        @map("external_ids")
   ticketUrl        String?      @map("ticket_url")
   notes            String?
   source           String       @default("manual")

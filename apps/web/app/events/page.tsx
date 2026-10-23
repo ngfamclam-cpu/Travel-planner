@@ -1,19 +1,29 @@
 import Link from "next/link";
-import { eventClashes, toISODate, type TripLike } from "@rave-run/core";
+import { eventClashes, matchingArtists, toISODate, type TripLike } from "@rave-run/core";
 import { addTripForEvent, createEvent, trackTickets } from "@/app/actions";
-import { listEvents, listTrips } from "@/lib/data";
+import { getSettings, listEvents, listTrips } from "@/lib/data";
 import { fmtDay } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function Discover({ searchParams }: { searchParams: Promise<{ region?: string; month?: string }> }) {
-  const { region = "all", month = "" } = await searchParams;
-  const [events, trips] = await Promise.all([listEvents(), listTrips()]);
+const WEEK_MS = 7 * 86_400_000;
+
+export default async function Discover({ searchParams }: { searchParams: Promise<{ region?: string; month?: string; show?: string }> }) {
+  const { region = "all", month = "", show = "all" } = await searchParams;
+  const [events, trips, settings] = await Promise.all([listEvents(), listTrips(), getSettings()]);
   const tripLikes: TripLike[] = trips.map((t) => ({ id: t.id, name: t.name, status: t.status, arrive: t.arrive, depart: t.depart }));
   const today = toISODate(new Date());
   const rows = events
-    .map((e) => ({ ...e, start: toISODate(e.startDate), end: toISODate(e.endDate) }))
+    .map((e) => ({
+      ...e,
+      start: toISODate(e.startDate),
+      end: toISODate(e.endDate),
+      // "New" = found by live discovery in the last week (seeded events don't count).
+      isNew: e.source !== "manual" && !e.source.includes("seed") && Date.now() - e.createdAt.getTime() < WEEK_MS,
+      matches: matchingArtists(e.lineupHighlights, settings.favoriteArtists),
+    }))
     .filter((e) => e.end >= today)
+    .filter((e) => show === "all" || (show === "mine" ? e.matches.length > 0 : e.isNew))
     .filter((e) => region === "all" || e.region === region)
     .filter((e) => !month || e.start.slice(0, 7) === month || e.end.slice(0, 7) === month);
   const months = [...new Set(events.map((e) => toISODate(e.startDate).slice(0, 7)).filter((m) => m >= today.slice(0, 7)))].sort();
@@ -31,9 +41,17 @@ export default async function Discover({ searchParams }: { searchParams: Promise
           <option value="">Any month</option>
           {months.map((m) => <option key={m} value={m}>{new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" })}</option>)}
         </select>
+        <select name="show" defaultValue={show} style={{ width: "auto" }}>
+          <option value="all">All events</option>
+          <option value="mine">Has my artists</option>
+          <option value="new">New this week</option>
+        </select>
         <button type="submit" className="ghost">Filter</button>
       </form>
-      <p className="muted">Live discovery (Ticketmaster, Edmtrain) arrives in build step 5. These are the seeded events.</p>
+      <p className="muted">
+        New US festivals are found every Monday from Edmtrain and Ticketmaster (needs their free keys; see Keys). Your artist list is in{" "}
+        <Link href="/settings#artists">Settings</Link>.
+      </p>
 
       {rows.map((e) => {
         const own = new Set(e.trips.map((t) => t.id));
@@ -47,11 +65,17 @@ export default async function Discover({ searchParams }: { searchParams: Promise
             <small>{e.venue && e.venue !== "TBA" ? `${e.venue}, ` : ""}{e.city}{e.country !== "US" ? `, ${e.country}` : ""}</small>
             <div className="row" style={{ marginTop: 6 }}>
               <span className="chip">{e.region}</span>
+              {e.isNew && <span className="chip accent">new</span>}
+              {e.matches.length > 0 && <span className="chip good">★ {e.matches.join(", ")}</span>}
               {e.drivableFromBoston && <span className="chip good">drivable from Boston</span>}
               {e.datesTentative && <span className="chip warn">dates approximate</span>}
               {clashes.map((c) => <span key={c.id} className="chip bad">clashes with {c.name}</span>)}
               {e.notes && <small>{e.notes}</small>}
             </div>
+            {e.lineupHighlights.length > 0 && <div><small>{e.lineupHighlights.slice(0, 8).join(" · ")}</small></div>}
+            {e.edmtrainUrl && (
+              <div><small><a href={e.edmtrainUrl} target="_blank" rel="noreferrer">Event on Edmtrain ↗</a></small></div>
+            )}
             {e.ticketWatches.length === 0 && (
               <form action={trackTickets} style={{ marginTop: 8 }}>
                 <input type="hidden" name="eventId" value={e.id} />

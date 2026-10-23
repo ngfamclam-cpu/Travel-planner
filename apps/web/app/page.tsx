@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { setupChecklist } from "@rave-run/core";
+import { eventClashes, matchingArtists, setupChecklist, toISODate } from "@rave-run/core";
 import { prisma } from "@rave-run/db";
 import { AlertList } from "@/components/AlertList";
 import { PlanButton } from "@/components/Toggles";
@@ -49,6 +49,14 @@ export default async function Home() {
     openAlerts(),
     prisma.setting.findUnique({ where: { key: "demoDataLoadedAt" } }),
   ]);
+  const newEvents = await prisma.event.findMany({
+    where: { createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) }, source: { in: ["edmtrain", "ticketmaster"] } },
+    orderBy: { startDate: "asc" },
+  });
+  const newMatching = newEvents.filter((e) => matchingArtists(e.lineupHighlights, settings.favoriteArtists).length > 0);
+  const newClashing = newEvents.filter(
+    (e) => eventClashes({ start: toISODate(e.startDate), end: toISODate(e.endDate) }, trips.map((t) => ({ id: t.id, name: t.name, status: t.status, arrive: t.arrive, depart: t.depart }))).length > 0,
+  );
   const active = trips.filter((t) => t.status !== "done");
   const committed = active.filter((t) => t.status === "planned" || t.status === "booked");
   const considering = active.filter((t) => t.status === "considering");
@@ -98,6 +106,13 @@ export default async function Home() {
 
       <h2>Today</h2>
       <AlertList alerts={alerts} />
+      {newEvents.length > 0 && (
+        <Link href="/events?show=new" className="alert" style={{ display: "block", color: "inherit" }}>
+          🆕 {newEvents.length} new event{newEvents.length > 1 ? "s" : ""} this week
+          {newMatching.length > 0 && <> · <strong>{newMatching.length} with your artists</strong></>}
+          {newClashing.length > 0 && <> · {newClashing.length} clash with planned trips</>}
+        </Link>
+      )}
       {actions.length === 0 && alerts.length === 0 && <p className="muted">Nothing needs action.</p>}
       {actions.map((a, i) => (
         <Link key={i} href={a.href} className={`alert ${a.tone}`} style={{ display: "block", color: "inherit" }}>{a.text}</Link>

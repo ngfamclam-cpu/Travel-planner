@@ -349,6 +349,10 @@ export async function saveSettings(f: FormData) {
     chaseFreedomVersion: (str(f, "chaseFreedomVersion") || "unknown") as AppSettings["cards"]["chaseFreedomVersion"],
   });
   await putSetting("status", { airline: str(f, "statusAirline"), hotel: str(f, "statusHotel") });
+  if (f.has("favoriteArtists")) {
+    const artists = str(f, "favoriteArtists").split(/[\n,]+/).map((a) => a.trim()).filter(Boolean);
+    await putSetting("favoriteArtists", [...new Set(artists)].slice(0, 200));
+  }
 
   // Card facts that follow from the answers.
   const sapphire = str(f, "hasChaseSapphire");

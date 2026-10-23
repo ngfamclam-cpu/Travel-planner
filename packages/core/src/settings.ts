@@ -35,6 +35,8 @@ export interface AppSettings {
   ticketFeePct: Record<string, number>;
   /** Alert when CrowdVolt's lowest ask is within this many dollars of the highest bid. */
   crowdvoltGapAlert: number;
+  /** Artists to look for in newly discovered events. */
+  favoriteArtists: string[];
   asiaDestination: "undecided" | "tokyo" | "china";
   nyeChoice: string; // "undecided" or trip id
 }
@@ -63,6 +65,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   status: { airline: "", hotel: "" },
   ticketFeePct: {},
   crowdvoltGapAlert: 20,
+  favoriteArtists: [
+    "Subtronics", "Excision", "Wooli", "Tape B", "Dabin", "Zeds Dead", "Knock2", "RL Grime", "Chris Lake",
+    "Tiësto", "John Summit", "Fisher", "Kaskade", "Marshmello", "DJ Snake", "Seven Lions", "Illenium", "Griz", "Slander", "Levity", "ISOxo",
+  ],
   asiaDestination: "undecided",
   nyeChoice: "undecided",
 };
