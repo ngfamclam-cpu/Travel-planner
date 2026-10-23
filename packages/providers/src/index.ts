@@ -10,6 +10,7 @@ export * from "./tickets/seatgeek";
 export * from "./tickets/page";
 export * from "./tickets/finder";
 export * from "./flights/fastflights";
+export * from "./flights/calendar";
 export * from "./events/edmtrain";
 export * from "./events/ticketmaster";
 export * from "./places/osm";

@@ -1,7 +1,7 @@
 // Rave Run worker: scheduled scrapes and price snapshots. All schedules in America/New_York (spec §4).
 import cron from "node-cron";
 import { prisma } from "@rave-run/db";
-import { fetchEdmtrainFestivals, fetchImage, fetchTicketmasterFestivals, findEventPage, flightProvider, flightProviders, geocode, googlePlaces, hotelProvider, osmPlaces, pageImageUrls, ticketCheckers } from "@rave-run/providers";
+import { FlightCalendarClient, fetchEdmtrainFestivals, fetchImage, fetchTicketmasterFestivals, findEventPage, flightProvider, flightProviders, geocode, googlePlaces, hotelProvider, osmPlaces, pageImageUrls, ticketCheckers } from "@rave-run/providers";
 import { mergeSettings } from "@rave-run/core";
 import { pgQueryCache } from "./cache";
 import { runFlightJob } from "./jobs/flights";
@@ -15,6 +15,7 @@ import { writeSummary } from "./brief/summary";
 import { runGuides, type GuideDeps } from "./jobs/guides";
 import { runSavingsCheck } from "./jobs/savings";
 import { runImages, type ImageDeps } from "./jobs/images";
+import { runAsia } from "./jobs/asia";
 import { claudeGuideWriter } from "./guides/claude";
 import { JobRunner, settingsLastRunStore } from "./scheduler";
 
@@ -168,6 +169,16 @@ async function images() {
   }
 }
 
+async function asia() {
+  const client = new FlightCalendarClient({ baseUrl: process.env.FAST_FLIGHTS_URL });
+  try {
+    await runAsia(prisma, { calendar: (req) => client.calendar(req) });
+  } catch (e) {
+    console.error("Explore Asia crashed:", e);
+    await prisma.providerRun.create({ data: { provider: "google_flights_calendar", kind: "asia", ok: false, error: `crash: ${(e as Error).message}` } });
+  }
+}
+
 let newImagesRunning = false;
 async function newImages() {
   if (newImagesRunning) return;
@@ -206,6 +217,8 @@ async function main() {
       { name: "discovery", run: discovery, catchUpHours: 24 * 7 },
       { name: "guides", run: guides, catchUpHours: 24 * 7 },
       { name: "images", run: images, catchUpHours: 24 * 7 },
+      // Explore Asia fare calendar: each 61-day slice is due every few days; the job only fetches what's due.
+      { name: "asia", run: asia },
       { name: "prune", run: prune },
     ],
     settingsLastRunStore(prisma),
@@ -234,6 +247,7 @@ async function main() {
   // Images: weekly sweep (Saturdays), plus events that just got an official site, every 5 minutes.
   cron.schedule("20 4 * * 6", () => runner.scheduled("images"), { timezone: TZ });
   cron.schedule("*/5 * * * *", newImages, { timezone: TZ });
+  cron.schedule("40 2 * * *", () => runner.scheduled("asia"), { timezone: TZ });
   cron.schedule("30 3 * * *", () => runner.scheduled("prune"), { timezone: TZ });
   cron.schedule("45 6 * * 1", () => runner.scheduled("discovery"), { timezone: TZ }); // Mondays
   // Missed runs (computer off or asleep): check on startup and every hour.

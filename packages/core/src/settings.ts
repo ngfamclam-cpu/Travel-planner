@@ -9,6 +9,19 @@ export interface OriginAirport {
   enabled?: boolean;
 }
 
+export interface AsiaWatchSettings {
+  enabled: boolean;
+  /** Round trips are priced for every stay length in this range. */
+  minNights: number;
+  maxNights: number;
+  /** How far ahead to track, in months. */
+  months: number;
+  /** Each date is re-checked about this often. */
+  refreshDays: number;
+  /** Calendar requests per day (each covers up to 61 days of one route). */
+  dailyRequests: number;
+}
+
 export interface AppSettings {
   homeCity: string;
   originAirports: OriginAirport[];
@@ -40,6 +53,8 @@ export interface AppSettings {
   /** What a point is worth to you, in cents, when comparing cards (cash back = 1). */
   pointValues: Record<string, number>;
   asiaDestination: "undecided" | "tokyo" | "china";
+  /** Explore Asia price calendar: nonstop BOS/NYC ⇄ Tokyo, Seoul, Shanghai, Hong Kong. */
+  asiaWatch: AsiaWatchSettings;
   nyeChoice: string; // "undecided" or trip id
 }
 
@@ -73,6 +88,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     "Tiësto", "John Summit", "Fisher", "Kaskade", "Marshmello", "DJ Snake", "Seven Lions", "Illenium", "Griz", "Slander", "Levity", "ISOxo",
   ],
   asiaDestination: "undecided",
+  asiaWatch: { enabled: true, minNights: 7, maxNights: 10, months: 6, refreshDays: 3, dailyRequests: 80 },
   nyeChoice: "undecided",
 };
 

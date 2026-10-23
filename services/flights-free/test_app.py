@@ -5,6 +5,7 @@ import threading
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace as NS
 from unittest import mock
 
@@ -57,6 +58,76 @@ class SearchTests(unittest.TestCase):
             self.assertEqual(app.search(bad)["kind"], "bad_request")
 
 
+def future(days):
+    return (date.today() + timedelta(days=days)).isoformat()
+
+
+CAL = {"origins": ["JFK", "EWR"], "destinations": ["HND", "NRT"], "from": future(10), "to": future(40), "trip": "round", "nights": 7}
+
+
+def dp(d, price, ret=None, currency="USD"):
+    dates = (datetime.fromisoformat(d),) if ret is None else (datetime.fromisoformat(d), datetime.fromisoformat(ret))
+    return NS(date=dates, price=price, currency=currency)
+
+
+class CalendarTests(unittest.TestCase):
+    def setUp(self):
+        app._dates = None
+
+    def test_round_trip_filters(self):
+        f = app.build_calendar_filters(app.validate_calendar(CAL))
+        self.assertEqual(f.trip_type, app.TripType.ROUND_TRIP)
+        self.assertEqual(f.stops, app.MaxStops.NON_STOP)
+        self.assertEqual(f.duration, 7)
+        self.assertEqual([[a[0].name for a in s.departure_airport] for s in f.flight_segments], [["JFK", "EWR"], ["HND", "NRT"]])
+        self.assertEqual(f.flight_segments[1].travel_date, future(17))
+        self.assertIn("GetCalendarGraph", app.SearchDates.BASE_URL)
+        self.assertTrue(f.encode())  # serialises without error
+
+    def test_one_way_filters(self):
+        f = app.build_calendar_filters(app.validate_calendar({**CAL, "trip": "one-way", "nights": None}))
+        self.assertEqual(f.trip_type, app.TripType.ONE_WAY)
+        self.assertEqual(len(f.flight_segments), 1)
+
+    def test_maps_prices_and_drops_bad_rows(self):
+        fake = mock.Mock()
+        fake.search.return_value = [
+            dp(future(12), 1180.0, future(19)),
+            dp(future(13), 0, future(20)),
+            dp(future(14), 990.0, future(21), currency="JPY"),
+            dp(future(90), 700.0, future(97)),
+        ]
+        with mock.patch.object(app, "SearchDates", return_value=fake):
+            r = app.calendar(CAL)
+        self.assertEqual(r, {"ok": True, "prices": [{"date": future(12), "return": future(19), "price": 1180.0}]})
+
+    def test_parses_google_wire_format(self):
+        inner = json.dumps([None, [[future(12), future(19), [[None, 1234], ""]], [future(13), future(20), [[None], ""]]]])
+        body = ")]}'\n\n" + json.dumps([["wrb.fr", None, inner]])
+        client = mock.Mock()
+        client.post.return_value = NS(text=body, raise_for_status=lambda: None)
+        with mock.patch("fli.search.dates.get_client", return_value=client):
+            r = app.calendar(CAL)
+        self.assertEqual(r["prices"], [{"date": future(12), "return": future(19), "price": 1234.0}])
+        self.assertIn("f.req=", client.post.call_args.kwargs["data"])
+
+    def test_blocked(self):
+        fake = mock.Mock()
+        fake.search.side_effect = RuntimeError("HTTP 429 Too Many Requests")
+        with mock.patch.object(app, "SearchDates", return_value=fake):
+            self.assertEqual(app.calendar(CAL)["kind"], "blocked")
+
+    def test_calendar_validation(self):
+        for bad in [
+            {**CAL, "origins": "JFK"},
+            {**CAL, "origins": ["XXX"]},
+            {**CAL, "to": future(80)},
+            {**CAL, "nights": 0},
+            {**CAL, "trip": "multi"},
+        ]:
+            self.assertEqual(app.calendar(bad)["kind"], "bad_request", bad)
+
+
 class HttpTests(unittest.TestCase):
     def test_http_endpoints(self):
         srv = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
@@ -66,6 +137,7 @@ class HttpTests(unittest.TestCase):
             health = json.load(urllib.request.urlopen(base + "/health"))
             self.assertTrue(health["ok"])
             self.assertIn("fast-flights", health["library"])
+            self.assertIn("flights 0.9.0", health["library"])
             req = urllib.request.Request(base + "/search", data=json.dumps(BODY).encode(), headers={"content-type": "application/json"})
             with mock.patch.object(app, "get_flights", return_value=[NONSTOP]):
                 r = json.load(urllib.request.urlopen(req))

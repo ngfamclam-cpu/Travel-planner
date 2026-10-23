@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { centsPerPoint, DEFAULT_SETTINGS, mergeSettings, nights, redeemVerdict, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec, type HotelTier } from "@rave-run/core";
+import { asiaConfig, centsPerPoint, DEFAULT_SETTINGS, mergeSettings, nights, redeemVerdict, toISODate, type AppSettings, type HotelBooking, type HotelSearchSpec, type HotelTier } from "@rave-run/core";
 import { createTripFromEvent, day, ensureTicketWatches, prisma, recordTicketPrice, refreshTripQuotes, type ChosenOption, type LineItemKind, type Prisma, type TripStatus } from "@rave-run/db";
 import { TICKET_PLATFORMS, type TicketPlatformId } from "@rave-run/core";
 import { SESSION_COOKIE, authConfigured, sessionToken, timingSafeEqual } from "@/lib/auth";
@@ -325,6 +325,25 @@ export async function setEventSite(f: FormData) {
   }
   await prisma.event.update({ where: { id: eventId }, data: { officialUrl, imagesCheckedAt: null } });
   revalidatePath("/events");
+}
+
+/** Explore Asia tracking settings (the page's own form). */
+export async function saveAsiaWatch(f: FormData) {
+  const current = asiaConfig(mergeSettings(await prisma.setting.findMany()));
+  const n = (k: string, fallback: number) => (str(f, k) !== "" && Number.isFinite(Number(str(f, k))) ? Number(str(f, k)) : fallback);
+  const next = asiaConfig({
+    ...DEFAULT_SETTINGS,
+    asiaWatch: {
+      enabled: f.get("enabled") === "on",
+      minNights: n("minNights", current.minNights),
+      maxNights: n("maxNights", current.maxNights),
+      months: n("months", current.months),
+      refreshDays: n("refreshDays", current.refreshDays),
+      dailyRequests: n("dailyRequests", current.dailyRequests),
+    },
+  });
+  await putSetting("asiaWatch", next);
+  revalidatePath("/asia");
 }
 
 // ---------- settings ----------

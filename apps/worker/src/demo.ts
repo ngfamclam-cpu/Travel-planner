@@ -11,6 +11,8 @@ import { runDiscovery } from "./jobs/discovery";
 import { runSignals } from "./jobs/signals";
 import { runBrief } from "./jobs/brief";
 import { runGuides } from "./jobs/guides";
+import { runAsia } from "./jobs/asia";
+import { addDays, type AsiaSeries } from "@rave-run/core";
 
 const dow = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 1000, 7);
@@ -47,6 +49,27 @@ const hotels: HotelProvider = {
     return { ok: true, provider: "demo_hotels", cached: false, fetchedAt: at, raw: { demo: true }, offers };
   },
 };
+
+/** Fake nonstop fare calendar: pricier weekends, holidays and cherry-blossom season; no BOS nonstops to Shanghai or Hong Kong. */
+async function demoCalendar(req: AsiaSeries["request"]) {
+  const homeward = !["BOS", "JFK", "EWR"].includes(req.origins[0]!);
+  const [us, asia] = homeward ? [req.destinations, req.origins] : [req.origins, req.destinations];
+  if (us.includes("BOS") && (asia.includes("PVG") || asia.includes("HKG"))) return { ok: true as const, prices: [] };
+  const base = asia.includes("HND") ? 1240 : asia.includes("ICN") ? 1120 : asia.includes("PVG") ? 980 : 1190;
+  const prices = [];
+  for (let d = req.from; d <= req.to; d = addDays(d, 1)) {
+    const md = d.slice(5);
+    let p = base + (us.includes("BOS") ? 60 : 0) + ([5, 6].includes(dow(d)) ? 110 : 0) + (hash(d + asia[0]) % 160);
+    if (md >= "12-15" || md <= "01-04") p += 420;
+    if (md >= "01-10" && md <= "02-25") p -= 170;
+    if (asia.includes("HND") && md >= "03-20" && md <= "04-12") p += 330;
+    if (req.nights) p += (req.nights - 7) * 15;
+    if (req.trip === "one-way") p = Math.round(p * 0.68);
+    if (hash(d + req.nights + us[0]) % 9 === 0) continue; // some days without a nonstop
+    prices.push({ date: d, ...(req.trip === "round" ? { return: addDays(d, req.nights) } : {}), price: p });
+  }
+  return { ok: true as const, prices };
+}
 
 function ticketChecker(platform: TicketPlatformId, mult: number, extra: Partial<TicketCheck> = {}): TicketChecker {
   return {
@@ -144,6 +167,9 @@ async function main() {
       { id: "demo:6", name: "DEMO Waterfront Park", kind: "park" as const, rating: 4.6, ratingCount: 5000, lat, lng },
     ]);
   await runGuides(prisma, { geocode: async () => ({ lat: 0, lng: 0, label: "DEMO location" }), places: demoPlaces, placesSource: "DEMO places (fake)", writer: null }, { log: () => {} });
+  // Explore Asia calendar. Scan times are cleared so the real job replaces these on its next run.
+  await runAsia(prisma, { calendar: demoCalendar }, { log: () => {} });
+  await prisma.asiaScan.deleteMany();
   // Today's brief from the demo data (plain summary: no Claude call, nothing emailed or pushed).
   await prisma.setting.upsert({ where: { key: "briefChannels" }, create: { key: "briefChannels", value: { push: false, email: false } }, update: {} });
   await runBrief(prisma, {}, { force: true, log: () => {} });

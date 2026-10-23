@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { eventClashes, matchingArtists, setupChecklist, toISODate } from "@rave-run/core";
+import { asiaCity, asiaOptions, cheapestDates, eventClashes, matchingArtists, setupChecklist, toISODate } from "@rave-run/core";
 import { prisma } from "@rave-run/db";
 import { AlertList } from "@/components/AlertList";
 import { PlanButton } from "@/components/Toggles";
 import { Thumb } from "@/components/Thumb";
-import { getSettings, listTrips, openAlerts, providerHealth, savingsSummary, type TripView } from "@/lib/data";
+import { asiaData, getSettings, listTrips, openAlerts, providerHealth, savingsSummary, type TripView } from "@/lib/data";
 import { fmtRange, usd } from "@/lib/format";
 import { keyStatus } from "@/lib/keys";
 
@@ -57,6 +57,8 @@ export default async function Home() {
     prisma.setting.findUnique({ where: { key: "demoDataLoadedAt" } }),
   ]);
   const meter = await savingsSummary();
+  const asia = await asiaData();
+  const asiaBest = cheapestDates(asiaOptions(asia.rows, settings, { mode: "round" }), 1)[0];
   const latestBrief = await prisma.brief.findFirst({ orderBy: { date: "desc" }, select: { date: true, summary: true } });
   const newEvents = await prisma.event.findMany({
     where: { createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) }, source: { in: ["edmtrain", "ticketmaster"] } },
@@ -77,7 +79,8 @@ export default async function Home() {
   // Action items available in step 3. Buy/wait signals arrive with the signal engine (step 6).
   const actions: { text: string; href: string; tone: "warn" | "bad" }[] = [];
   for (const h of health.filter((h) => !h.ok)) {
-    actions.push({ text: `Couldn't check ${h.kind} prices: ${h.error?.split("\n")[0]}`, href: "/setup", tone: "bad" });
+    const asia = h.kind === "asia";
+    actions.push({ text: `Couldn't check ${asia ? "Explore Asia fares" : `${h.kind} prices`}: ${h.error?.split("\n")[0]}`, href: asia ? "/asia" : "/setup", tone: "bad" });
   }
   for (const kind of ["flight", "hotel"]) {
     if (!health.some((h) => h.kind === kind)) {
@@ -117,6 +120,16 @@ export default async function Home() {
         <Link href="/brief" className="card" style={{ display: "block", color: "inherit" }}>
           <small>📰 Brief · {latestBrief.date.toISOString().slice(0, 10)}</small>
           <div style={{ marginTop: 4 }}>{latestBrief.summary}</div>
+        </Link>
+      )}
+
+      {asiaBest && (
+        <Link href={`/asia?day=${asiaBest.date}#day`} className="card asia-home" style={{ display: "block", color: "inherit", ["--c" as string]: asiaCity(asiaBest.city)!.color }}>
+          <small>✈️ Explore Asia · cheapest nonstop round trip</small>
+          <div className="spread">
+            <strong>{asiaCity(asiaBest.city)!.name} · {fmtRange(asiaBest.date, asiaBest.returnDate ?? asiaBest.date)}</strong>
+            <span className="big num" style={{ fontSize: "1.25rem" }}>{usd(asiaBest.allIn)}</span>
+          </div>
         </Link>
       )}
 

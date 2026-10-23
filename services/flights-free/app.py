@@ -8,7 +8,11 @@ POST /search  {"origin":"BOS","destination":"MIA","outbound":"2027-03-25","retur
                "adults":1,"cabin":"economy","currency":"USD"}
   200 {"ok":true,"offers":[...],"url":"https://www.google.com/travel/flights/search?tfs=..."}
   200 {"ok":false,"kind":"blocked|parse|network|bad_request","error":"..."}
-GET  /health  {"ok":true,"library":"fast-flights 3.1.0"}
+POST /calendar {"origins":["JFK","EWR"],"destinations":["HND","NRT"],"from":"2026-11-01","to":"2026-12-31",
+               "trip":"round|one-way","nights":7,"nonstop":true,"currency":"USD"}
+  200 {"ok":true,"prices":[{"date":"2026-11-01","return":"2026-11-08","price":1180}, ...]}
+  Uses Google Flights' price calendar (the open-source fli library): one request covers up to 61 days.
+GET  /health  {"ok":true,"library":"fast-flights 3.1.0, flights 0.9.0"}
 """
 
 from __future__ import annotations
@@ -20,10 +24,13 @@ import random
 import re
 import threading
 import time
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.metadata import version
 
 from fast_flights import FlightQuery, FlightsNotFound, Passengers, create_query, get_flights
+from fli.models import Airport, DateSearchFilters, FlightSegment, MaxStops, PassengerInfo, SeatType, TripType
+from fli.search import SearchDates
 
 log = logging.getLogger("flights-free")
 
@@ -135,6 +142,99 @@ def search(body: dict) -> dict:
     return {"ok": True, "offers": offers, "url": url}
 
 
+CAL_MAX_DAYS = 61
+CAL_SEATS = {"economy": SeatType.ECONOMY, "premium_economy": SeatType.PREMIUM_ECONOMY, "business": SeatType.BUSINESS, "first": SeatType.FIRST}
+_dates: SearchDates | None = None
+
+
+def _airports(codes) -> list:
+    if not isinstance(codes, list) or not 1 <= len(codes) <= 4:
+        raise BadRequest("origins/destinations must be lists of 1-4 airport codes")
+    out = []
+    for c in codes:
+        c = str(c).upper()
+        if not IATA.match(c) or c not in Airport.__members__:
+            raise BadRequest(f"unknown airport {c}")
+        out.append(Airport[c])
+    return out
+
+
+def validate_calendar(body: dict) -> dict:
+    origins, dests = _airports(body.get("origins")), _airports(body.get("destinations"))
+    frm, to = str(body.get("from", "")), str(body.get("to", ""))
+    if not DATE.match(frm) or not DATE.match(to) or to < frm:
+        raise BadRequest("from/to must be YYYY-MM-DD with to on or after from")
+    span = (date.fromisoformat(to) - date.fromisoformat(frm)).days + 1
+    if span > CAL_MAX_DAYS:
+        raise BadRequest(f"at most {CAL_MAX_DAYS} days per request")
+    trip = str(body.get("trip", "round"))
+    if trip not in ("round", "one-way"):
+        raise BadRequest("trip must be round or one-way")
+    nights = int(body.get("nights") or 0)
+    if trip == "round" and not 1 <= nights <= 30:
+        raise BadRequest("round trips need nights 1-30")
+    seat = CAL_SEATS.get(str(body.get("cabin", "economy")))
+    if not seat:
+        raise BadRequest("unknown cabin")
+    return {"origins": origins, "destinations": dests, "from": frm, "to": to, "trip": trip, "nights": nights if trip == "round" else 0,
+            "nonstop": bool(body.get("nonstop", True)), "seat": seat, "currency": str(body.get("currency", "USD")).upper()}
+
+
+def build_calendar_filters(p: dict) -> DateSearchFilters:
+    """Google's calendar is keyed by the first travel date; the return leg sits `nights` later."""
+    def seg(a, b, d):
+        return FlightSegment(departure_airport=[[x, 0] for x in a], arrival_airport=[[x, 0] for x in b], travel_date=d)
+
+    first = p["from"]
+    segments = [seg(p["origins"], p["destinations"], first)]
+    if p["trip"] == "round":
+        segments.append(seg(p["destinations"], p["origins"], (date.fromisoformat(first) + timedelta(days=p["nights"])).isoformat()))
+    return DateSearchFilters(
+        trip_type=TripType.ROUND_TRIP if p["trip"] == "round" else TripType.ONE_WAY,
+        passenger_info=PassengerInfo(adults=1),
+        flight_segments=segments,
+        stops=MaxStops.NON_STOP if p["nonstop"] else MaxStops.ANY,
+        seat_type=p["seat"],
+        from_date=p["from"],
+        to_date=p["to"],
+        duration=p["nights"] or None,
+    )
+
+
+def calendar(body: dict) -> dict:
+    global _dates
+    try:
+        p = validate_calendar(body)
+        filters = build_calendar_filters(p)
+    except (BadRequest, ValueError, TypeError) as e:
+        return {"ok": False, "kind": "bad_request", "error": str(e)}
+    with _lock:
+        _throttle()
+        try:
+            _dates = _dates or SearchDates()
+            results = _dates.search(filters, currency=p["currency"]) or []
+        except (AttributeError, IndexError, KeyError, TypeError, json.JSONDecodeError) as e:
+            log.warning("calendar parse failure: %r", e)
+            return {"ok": False, "kind": "parse", "error": "Google returned a calendar fli couldn't read (blocked, consent page, or a layout change)"}
+        except Exception as e:
+            msg = str(e)
+            kind = "blocked" if re.search(r"\b(403|429)\b|captcha|unusual traffic", msg, re.I) else "network"
+            log.warning("calendar %s error: %s", kind, msg[:300])
+            return {"ok": False, "kind": kind, "error": msg[:300]}
+    prices = []
+    for r in results:
+        if not r.price or r.price <= 0 or (r.currency and r.currency.upper() != p["currency"]):
+            continue
+        d = r.date[0].strftime("%Y-%m-%d")
+        if not p["from"] <= d <= p["to"]:
+            continue
+        row = {"date": d, "price": round(float(r.price), 2)}
+        if p["trip"] == "round" and len(r.date) > 1:
+            row["return"] = r.date[1].strftime("%Y-%m-%d")
+        prices.append(row)
+    return {"ok": True, "prices": prices}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "flights-free/1"
 
@@ -148,19 +248,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         if self.path == "/health":
-            self._send(200, {"ok": True, "library": f"fast-flights {version('fast-flights')}"})
+            self._send(200, {"ok": True, "library": f"fast-flights {version('fast-flights')}, flights {version('flights')}"})
         else:
             self._send(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):  # noqa: N802
-        if self.path != "/search":
+        if self.path not in ("/search", "/calendar"):
             return self._send(404, {"ok": False, "error": "not found"})
         try:
             length = min(int(self.headers.get("content-length", "0")), 10_000)
             body = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(400, {"ok": False, "kind": "bad_request", "error": "invalid JSON"})
-        self._send(200, search(body))
+        self._send(200, calendar(body) if self.path == "/calendar" else search(body))
 
     def log_message(self, fmt, *args):
         log.info("%s %s", self.address_string(), fmt % args)

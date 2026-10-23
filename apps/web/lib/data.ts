@@ -1,6 +1,7 @@
 // Server-side data access. Converts Prisma Decimals/Dates into plain values for rendering.
 import {
   addDays,
+  type AsiaFareRow,
   buildDateCards,
   cheapestTicket,
   categoryFor,
@@ -596,4 +597,39 @@ export async function savingsSummary() {
 export async function platformIcons(): Promise<Set<string>> {
   const rows = await prisma.media.findMany({ where: { key: { startsWith: "platform-" } }, select: { key: true } });
   return new Set(rows.map((r) => r.key.replace(/^platform-/, "").replace(/-icon$/, "")));
+}
+
+// ---------- Explore Asia ----------
+
+export async function asiaData() {
+  const [fares, scans, lastRun, settings, demo] = await Promise.all([
+    prisma.asiaFare.findMany({ where: { date: { gte: new Date(`${todayIn()}T00:00:00Z`) } } }),
+    prisma.asiaScan.findMany(),
+    prisma.providerRun.findFirst({ where: { kind: "asia" }, orderBy: { startedAt: "desc" } }),
+    getSettings(),
+    prisma.setting.findUnique({ where: { key: "demoDataLoadedAt" } }),
+  ]);
+  const rows: AsiaFareRow[] = fares.map((f) => ({
+    kind: f.kind as AsiaFareRow["kind"],
+    origin: f.origin as AsiaFareRow["origin"],
+    city: f.city as AsiaFareRow["city"],
+    date: toISODate(f.date),
+    returnDate: f.returnDate ? toISODate(f.returnDate) : null,
+    nights: f.nights,
+    price: Number(f.price),
+    prevPrice: f.prevPrice == null ? null : Number(f.prevPrice),
+    lowPrice: Number(f.lowPrice),
+    fetchedAt: f.fetchedAt,
+  }));
+  // Routes checked successfully that never returned a nonstop fare.
+  const routeFound = new Map<string, number>();
+  for (const s of scans) {
+    if (!s.ok) continue;
+    const [, origin, city] = s.key.split(":");
+    const k = `${origin}:${city}`;
+    routeFound.set(k, (routeFound.get(k) ?? 0) + s.found);
+  }
+  const noNonstop = [...routeFound.entries()].filter(([, n]) => n === 0).map(([k]) => k.split(":") as [string, string]);
+  const lastFetched = fares.reduce<Date | null>((m, f) => (!m || f.fetchedAt > m ? f.fetchedAt : m), null);
+  return { rows, settings, lastRun, lastFetched, noNonstop, scanned: scans.filter((s) => s.ok).length, demo: !!demo };
 }

@@ -8,6 +8,7 @@ export function Nav() {
       <Link href="/compare">Compare</Link>
       <Link href="/tickets">Tickets</Link>
       <Link href="/events">Discover</Link>
+      <Link href="/asia">Asia</Link>
       <Link href="/points">Points</Link>
       <Link href="/settings">Settings</Link>
       <Link href="/setup" className="nav-wide">Keys</Link>

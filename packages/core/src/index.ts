@@ -18,3 +18,4 @@ export * from "./points";
 export * from "./brief";
 export * from "./guides";
 export * from "./savings";
+export * from "./asia";

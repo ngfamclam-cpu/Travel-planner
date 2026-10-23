@@ -59,13 +59,16 @@ export function googleFlightsUrl(q: {
   fromCity?: string;
   toCity?: string;
   outboundDate: ISODate;
-  returnDate: ISODate;
+  /** Omit for a one-way search. */
+  returnDate?: ISODate | null;
 }): string {
   const from = q.fromCity || cityForAirports(q.origins?.length ? [q.origins[0]] : ["BOS"]);
   const to = q.toCity || cityForAirports(q.destinations ?? []);
   const day = (iso: ISODate) =>
     parseISODate(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  const text = `Flights from ${from} to ${to} on ${day(q.outboundDate)} through ${day(q.returnDate)}`;
+  const text = q.returnDate
+    ? `Flights from ${from} to ${to} on ${day(q.outboundDate)} through ${day(q.returnDate)}`
+    : `One way flights from ${from} to ${to} on ${day(q.outboundDate)}`;
   return `https://www.google.com/travel/flights?q=${encodeURIComponent(text)}&curr=USD&hl=en`;
 }
 
