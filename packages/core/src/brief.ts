@@ -37,7 +37,7 @@ export interface BriefPayload {
   considering: { group: string; options: number; cheapest: { name: string; total: number } | null }[];
   newEvents: { name: string; city: string; dates: string; artists: string[]; clashesWith: string[]; url: string | null }[];
   problems: { source: string; note: string }[];
-  savings: { month: string; paidWouldHaveSaved: number; paidTierCost: number } | null;
+  savings: { month: string; paidWouldHaveSaved: number; paidTierCost: number; suggestUpgrade: boolean } | null;
 }
 
 const NUM = /\$?-?\d[\d,]*(?:\.\d+)?/g;
@@ -125,7 +125,7 @@ export function renderBriefText(p: BriefPayload, summary: string, baseUrl = ""):
     for (const e of p.newEvents) L.push(`- ${e.name}, ${e.city}, ${e.dates}${e.artists.length ? ` · ${e.artists.join(", ")}` : ""}${e.clashesWith.length ? ` · clashes with ${e.clashesWith.join(", ")}` : ""}`);
     L.push("");
   }
-  if (p.savings) L.push(`Paid data would have saved ${usd(p.savings.paidWouldHaveSaved)} this month (costs ${usd(p.savings.paidTierCost)}).`, "");
+  if (p.savings) L.push(`Paid data would have saved ${usd(p.savings.paidWouldHaveSaved)} this month (costs ${usd(p.savings.paidTierCost)}).${p.savings.suggestUpgrade ? " Worth upgrading: Settings → Data tier." : ""}`, "");
   if (p.problems.length) {
     L.push("COULDN'T CHECK");
     for (const x of p.problems) L.push(`- ${x.source}: ${x.note}`);
@@ -170,7 +170,7 @@ export function renderBriefHtml(p: BriefPayload, summary: string, baseUrl = ""):
       h.push(`<li>${e.url ? `<a href="${esc(e.url)}">${esc(e.name)}</a>` : esc(e.name)}, ${esc(e.city)}, ${esc(e.dates)}${e.artists.length ? ` · ★ ${esc(e.artists.join(", "))}` : ""}${e.clashesWith.length ? ` · <span style="color:#b91c1c">clashes with ${esc(e.clashesWith.join(", "))}</span>` : ""}</li>`);
     h.push(`</ul>`);
   }
-  if (p.savings) h.push(`<p>Paid data would have saved <b>${usd(p.savings.paidWouldHaveSaved)}</b> this month (costs ${usd(p.savings.paidTierCost)}).</p>`);
+  if (p.savings) h.push(`<p>Paid data would have saved <b>${usd(p.savings.paidWouldHaveSaved)}</b> this month (costs ${usd(p.savings.paidTierCost)}).${p.savings.suggestUpgrade ? " <b>Worth upgrading</b>: Settings → Data tier." : ""}</p>`);
   if (p.problems.length) {
     h.push(`<h3>Couldn't check</h3><ul style="color:#6b7280">`);
     for (const x of p.problems) h.push(`<li>${esc(x.source)}: ${esc(x.note)}</li>`);

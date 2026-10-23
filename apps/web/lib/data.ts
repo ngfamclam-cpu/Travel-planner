@@ -9,6 +9,7 @@ import {
   latestPerPlatform,
   lineTotal,
   lowestTicket,
+  savingsThisMonth,
   sortCards,
   TICKET_PLATFORMS,
   type TicketPlatformId,
@@ -574,4 +575,14 @@ export async function trackedEvents(): Promise<EventTickets[]> {
     if (t) out.push(t);
   }
   return out;
+}
+
+/** Savings meter for this month (spec step 10). */
+export async function savingsSummary() {
+  const month = todayIn().slice(0, 7);
+  const rows = await prisma.savingsMeter.findMany({ where: { date: { gte: new Date(`${month}-01T00:00:00Z`) } } });
+  return savingsThisMonth(
+    rows.map((r) => ({ lineItemId: r.lineItemId, date: toISODate(r.date), freeBest: num(r.freeBestPrice), paidBest: num(r.paidBestPrice) })),
+    month,
+  );
 }

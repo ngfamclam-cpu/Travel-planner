@@ -33,6 +33,11 @@ async function tiers(eventName: string, start: string, rows: Omit<Prisma.TicketT
 async function reset() {
   // Order matters for FKs.
   await prisma.$transaction([
+    prisma.arrivalGuide.deleteMany(),
+    prisma.brief.deleteMany(),
+    prisma.pushSubscription.deleteMany(),
+    prisma.ticketPrice.deleteMany(),
+    prisma.ticketWatch.deleteMany(),
     prisma.alert.deleteMany(),
     prisma.savingsMeter.deleteMany(),
     prisma.redemption.deleteMany(),

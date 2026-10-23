@@ -16,7 +16,7 @@ export interface ProviderEnv {
   TICKETMASTER_API_KEY?: string;
   SEATGEEK_CLIENT_ID?: string;
   FAST_FLIGHTS_URL?: string;
-  /** auto (default): free source first, SerpApi as fallback · free · serpapi */
+  /** auto (default): free source first, SerpApi as fallback · paid: SerpApi first, free as fallback · free · serpapi */
   FLIGHT_SOURCE?: string;
 }
 
@@ -54,6 +54,8 @@ export function flightProviders(env: ProviderEnv, cache?: QueryCacheStore): { pr
   const free = env.FAST_FLIGHTS_URL ? new FastFlightsProvider({ baseUrl: env.FAST_FLIGHTS_URL, cache }) : null;
   const serp = env.SERPAPI_KEY ? flightProvider(env, cache) : null;
   if (source === "serpapi") return { primary: serp ?? new UnconfiguredFlightProvider() };
+  // Paid tier: SerpApi first (Google's price labels, all airports in one search), free source as backup.
+  if (source === "paid") return serp ? { primary: serp, fallback: free ?? undefined } : { primary: free ?? new UnconfiguredFlightProvider() };
   if (source === "free") return { primary: free ?? new UnconfiguredFlightProvider() };
   if (free) return { primary: free, fallback: serp ?? undefined };
   return { primary: serp ?? new UnconfiguredFlightProvider() };

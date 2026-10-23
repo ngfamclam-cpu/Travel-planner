@@ -48,5 +48,6 @@ describe("FastFlightsProvider", () => {
     expect(flightProviders({ SERPAPI_KEY: "k" }).primary.info.name).toBe("serpapi_google_flights");
     expect(flightProviders({ FAST_FLIGHTS_URL: "http://f", SERPAPI_KEY: "k", FLIGHT_SOURCE: "serpapi" }).primary.info.name).toBe("serpapi_google_flights");
     expect(flightProviders({}).primary.info.configured).toBe(false);
+    expect(flightProviders({ FAST_FLIGHTS_URL: "http://f", SERPAPI_KEY: "k", FLIGHT_SOURCE: "paid" })).toMatchObject({ primary: { info: { name: "serpapi_google_flights" } }, fallback: { info: { name: "google_flights_free" } } });
   });
 });

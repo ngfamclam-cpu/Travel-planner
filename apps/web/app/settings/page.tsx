@@ -2,16 +2,18 @@ import { prisma } from "@rave-run/db";
 import { TICKET_PLATFORMS } from "@rave-run/core";
 import { PushToggle } from "@/components/PushToggle";
 import { resetAirports, saveCard, savePoints, saveSettings, saveTicketSettings } from "@/app/actions";
-import { getCards, getPoints, getSettings } from "@/lib/data";
+import { getCards, getPoints, getSettings, savingsSummary } from "@/lib/data";
+import { usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function Settings() {
-  const [s, cards, points, partners] = await Promise.all([
+  const [s, cards, points, partners, meter] = await Promise.all([
     getSettings(),
     getCards(),
     getPoints(),
     prisma.transferPartner.findMany({ orderBy: [{ currency: "asc" }, { partner: "asc" }] }),
+    savingsSummary(),
   ]);
 
   return (
@@ -125,7 +127,33 @@ export default async function Settings() {
             <PushToggle publicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
           </div>
           <p className="muted"><small>Email goes to BRIEF_EMAIL_TO (needs RESEND_API_KEY). See the latest brief on the <a href="/brief">Brief page</a>.</small></p>
-          <p className="muted"><small>The free flight source makes one Google Flights request per airport pair, spaced several seconds apart. Keep it modest (≈100–150/day) so Google doesn't block your server. Data tier: {s.dataTier}. The savings meter arrives in step 10.</small></p>
+          <p className="muted"><small>The free flight source makes one Google Flights request per airport pair, spaced several seconds apart. Keep it modest (≈100–150/day) so Google doesn't block your server. Data tier and savings meter: below.</small></p>
+        </section>
+
+        <section className="card" id="data-tier">
+          <h2 style={{ marginTop: 0 }}>Data tier</h2>
+          <div className="fields">
+            <div className="wide">
+              <label>Flight data</label>
+              <select name="dataTier" defaultValue={s.dataTier}>
+                <option value="free">Free: Google Flights via the free source, SerpApi as backup</option>
+                <option value="paid">Paid ($25/mo SerpApi plan): SerpApi first, with Google&apos;s low/typical/high labels</option>
+              </select>
+            </div>
+          </div>
+          <div className="alert" style={{ marginBottom: 0 }}>
+            <strong>Savings meter · {meter.month}</strong>
+            <div>
+              {meter.comparisons === 0
+                ? s.dataTier === "paid"
+                  ? "Paid tier is on, so there's nothing to compare."
+                  : "No comparisons yet. With a free SerpApi key, up to 2 flights a day are re-checked to see if paid data finds them cheaper."
+                : <>Paid data would have saved <strong>{usd(meter.wouldHaveSaved)}</strong> this month ({meter.itemsCheaper} of {meter.comparisons} flights cheaper). The plan costs {usd(meter.paidTierCost)}.</>}
+            </div>
+            {meter.comparisons > 0 && (
+              <small>{meter.suggestUpgrade ? "✅ Worth upgrading: savings beat the cost." : "Not worth upgrading yet: savings are below the cost."}</small>
+            )}
+          </div>
         </section>
 
         <div className="row"><button type="submit">Save settings</button></div>

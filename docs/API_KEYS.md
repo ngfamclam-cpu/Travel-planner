@@ -89,7 +89,6 @@ Arrival guides already work without this: they use OpenStreetMap, which is free 
 3. **APIs & Services → Credentials → Create credentials → API key**. Restrict it to *Places API (New)* and to your droplet's IP.
 4. `GOOGLE_PLACES_API_KEY=…`
 
-An alternative with no card is the Foursquare Places free tier; tell me if you'd rather use that.
 
 ---
 

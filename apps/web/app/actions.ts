@@ -341,7 +341,12 @@ export async function saveSettings(f: FormData) {
   await putSetting("cppFloor", n("cppFloor", current.cppFloor));
   await putSetting("briefTime", /^\d{2}:\d{2}$/.test(str(f, "briefTime")) ? str(f, "briefTime") : current.briefTime);
   await putSetting("briefChannels", { push: f.get("briefPush") === "on", email: f.get("briefEmail") === "on" });
-  await putSetting("serpapiMonthlyQuota", n("serpapiMonthlyQuota", current.serpapiMonthlyQuota));
+  const tier = str(f, "dataTier") === "paid" ? "paid" : "free";
+  await putSetting("dataTier", tier);
+  let quota = n("serpapiMonthlyQuota", current.serpapiMonthlyQuota);
+  // Switching to paid with the free-plan number still set: assume the $25 plan's 1,000 searches.
+  if (tier === "paid" && current.dataTier !== "paid" && quota <= 250) quota = 1000;
+  await putSetting("serpapiMonthlyQuota", quota);
   await putSetting("freeFlightDailyRequests", Math.max(0, Math.round(n("freeFlightDailyRequests", current.freeFlightDailyRequests))));
   await putSetting("cards", {
     citiStrataVersion: (str(f, "citiStrataVersion") || "unknown") as AppSettings["cards"]["citiStrataVersion"],

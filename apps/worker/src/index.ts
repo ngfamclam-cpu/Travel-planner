@@ -1,7 +1,8 @@
 // Rave Run worker: scheduled scrapes and price snapshots. All schedules in America/New_York (spec §4).
 import cron from "node-cron";
 import { prisma } from "@rave-run/db";
-import { fetchEdmtrainFestivals, fetchTicketmasterFestivals, findEventPage, flightProviders, geocode, googlePlaces, hotelProvider, osmPlaces, ticketCheckers } from "@rave-run/providers";
+import { fetchEdmtrainFestivals, fetchTicketmasterFestivals, findEventPage, flightProvider, flightProviders, geocode, googlePlaces, hotelProvider, osmPlaces, ticketCheckers } from "@rave-run/providers";
+import { mergeSettings } from "@rave-run/core";
 import { pgQueryCache } from "./cache";
 import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
@@ -12,6 +13,7 @@ import { runSignals } from "./jobs/signals";
 import { briefIfDue, runBrief, type BriefDeps } from "./jobs/brief";
 import { writeSummary } from "./brief/summary";
 import { runGuides, type GuideDeps } from "./jobs/guides";
+import { runSavingsCheck } from "./jobs/savings";
 import { claudeGuideWriter } from "./guides/claude";
 import { JobRunner, settingsLastRunStore } from "./scheduler";
 
@@ -23,7 +25,10 @@ const TICKET_SCHEDULE = process.env.TICKET_CRON ?? "20 6 * * *";
 const PAUSE_MS = Number(process.env.WORKER_PAUSE_MS ?? 20_000);
 
 async function flights() {
-  const { primary, fallback } = flightProviders(process.env, pgQueryCache(prisma));
+  // Settings → Data tier: "paid" puts SerpApi first; FLIGHT_SOURCE in .env overrides either way.
+  const tier = mergeSettings(await prisma.setting.findMany()).dataTier;
+  const source = process.env.FLIGHT_SOURCE && process.env.FLIGHT_SOURCE !== "auto" ? process.env.FLIGHT_SOURCE : tier === "paid" ? "paid" : "auto";
+  const { primary, fallback } = flightProviders({ ...process.env, FLIGHT_SOURCE: source }, pgQueryCache(prisma));
   try {
     await runFlightJob(prisma, primary, { pauseMs: primary.info.costPerPair ? 0 : PAUSE_MS, fallback });
   } catch (e) {
@@ -56,6 +61,14 @@ async function tickets() {
   } catch (e) {
     console.error("Ticket job crashed:", e);
     await prisma.providerRun.create({ data: { provider: "tickets", kind: "ticket", ok: false, error: `crash: ${(e as Error).message}` } });
+  }
+}
+
+async function savings() {
+  try {
+    await runSavingsCheck(prisma, flightProvider(process.env, pgQueryCache(prisma)));
+  } catch (e) {
+    console.error("Savings check crashed:", e);
   }
 }
 
@@ -157,6 +170,7 @@ async function main() {
   const runner = new JobRunner(
     [
       { name: "flights", run: flights },
+      { name: "savings", run: savings },
       { name: "hotels", run: hotels },
       { name: "tickets", run: tickets },
       // After the price jobs, so signals see today's prices.

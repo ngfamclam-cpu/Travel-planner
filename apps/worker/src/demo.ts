@@ -126,6 +126,13 @@ async function main() {
     const w = await prisma.ticketWatch.findFirst({ where: { eventId: club.id, platform: "radiate" } });
     if (w) await recordTicketPrice(prisma, w, { listed: 80, feesIncluded: true, source: "manual", tierLabel: "GA", note: "DEMO: seller has 3 vouches" });
   }
+  // Savings meter: pretend SerpApi re-checked three flights and found two cheaper.
+  const flightsForMeter = await prisma.lineItem.findMany({ where: { kind: "flight", quotedAmount: { not: null } }, take: 3, orderBy: { createdAt: "asc" } });
+  const meterDay = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  for (const [k, li] of flightsForMeter.entries()) {
+    const free = Number(li.quotedAmount);
+    await prisma.savingsMeter.create({ data: { date: meterDay, lineItemId: li.id, freeBestPrice: free, paidBestPrice: free - [18, 14, -6][k] } });
+  }
   // Arrival guides for planned trips from fake DEMO places (plain guides: no map lookups, no Claude).
   const demoPlaces = (lat: number, lng: number) =>
     Promise.resolve([

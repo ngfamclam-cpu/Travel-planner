@@ -22,7 +22,7 @@ Following the build order in the spec:
 | 7 | Points & cards: best card per expense (foreign fees abroad), cpp calculator with redeem/pay-cash verdict, saved award options, editable earn rules | ✅ |
 | 8 | Daily brief: action items, per-trip totals vs yesterday with signals and cards, new events, couldn't-check notes; Claude-written summary checked number by number; email (Resend) + web push + Brief page | ✅ |
 | 9 | Arrival guides: real places from OpenStreetMap (free) or Google Places; Claude picks from that list (verified) for food, late-night eats, off-day plans, getting there; survival notes; weekly + on request | ✅ |
-| 10 | Savings meter + paid tier | |
+| 10 | Savings meter: SerpApi re-checks up to 2 free-source flights a day; monthly 'paid data would have saved $X', upgrade suggested only above the $25 cost; Data tier switch puts SerpApi first | ✅ |
 
 ## How prices work
 

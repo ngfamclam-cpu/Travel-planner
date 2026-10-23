@@ -14,6 +14,7 @@ import {
   type BriefPayload,
   type BriefTrip,
   type CardLike,
+  savingsThisMonth,
 } from "@rave-run/core";
 import type { PrismaClient } from "@rave-run/db";
 
@@ -26,7 +27,8 @@ export async function buildBriefPayload(prisma: PrismaClient, now = new Date()):
   const settings = mergeSettings(await prisma.setting.findMany());
   const dayAgo = new Date(now.getTime() - 26 * 3_600_000);
 
-  const [trips, cardsRaw, alerts, runs, previous, events] = await Promise.all([
+  const month = today.slice(0, 7);
+  const [trips, cardsRaw, alerts, runs, previous, events, meterRows] = await Promise.all([
     prisma.trip.findMany({
       where: { status: { in: ["considering", "planned", "booked"] }, departDate: { gte: new Date(`${today}T00:00:00Z`) } },
       include: { lineItems: { orderBy: { sortOrder: "asc" } }, event: true },
@@ -37,7 +39,12 @@ export async function buildBriefPayload(prisma: PrismaClient, now = new Date()):
     prisma.providerRun.findMany({ where: { startedAt: { gte: dayAgo } }, orderBy: { startedAt: "desc" } }),
     prisma.brief.findFirst({ where: { date: { lt: new Date(`${today}T00:00:00Z`) } }, orderBy: { date: "desc" } }),
     prisma.event.findMany({ where: { createdAt: { gte: new Date(now.getTime() - 7 * 86_400_000) }, source: { in: ["edmtrain", "ticketmaster"] } }, orderBy: { startDate: "asc" } }),
+    prisma.savingsMeter.findMany({ where: { date: { gte: new Date(`${month}-01T00:00:00Z`) } } }),
   ]);
+  const meter = savingsThisMonth(
+    meterRows.map((r) => ({ lineItemId: r.lineItemId, date: toISODate(r.date), freeBest: num(r.freeBestPrice), paidBest: num(r.paidBestPrice) })),
+    month,
+  );
   const cards: CardLike[] = cardsRaw.map((c) => ({
     id: c.id, name: c.name, foreignFeePct: num(c.foreignFeePct), pointsCurrency: c.pointsCurrency, earnRules: (c.earnRules ?? {}) as Record<string, unknown>, needsSetup: c.needsSetup,
   }));
@@ -144,6 +151,7 @@ export async function buildBriefPayload(prisma: PrismaClient, now = new Date()):
     considering: [...considering.entries()].map(([group, v]) => ({ group, ...v })),
     newEvents,
     problems,
-    savings: null,
+    // Spec: only shown when meaningful.
+    savings: meter.wouldHaveSaved > 0 ? { month, paidWouldHaveSaved: Math.round(meter.wouldHaveSaved), paidTierCost: meter.paidTierCost, suggestUpgrade: meter.suggestUpgrade } : null,
   };
 }

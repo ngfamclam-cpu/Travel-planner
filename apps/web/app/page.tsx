@@ -3,7 +3,7 @@ import { eventClashes, matchingArtists, setupChecklist, toISODate } from "@rave-
 import { prisma } from "@rave-run/db";
 import { AlertList } from "@/components/AlertList";
 import { PlanButton } from "@/components/Toggles";
-import { getSettings, listTrips, openAlerts, providerHealth, type TripView } from "@/lib/data";
+import { getSettings, listTrips, openAlerts, providerHealth, savingsSummary, type TripView } from "@/lib/data";
 import { fmtRange, usd } from "@/lib/format";
 import { keyStatus } from "@/lib/keys";
 
@@ -52,6 +52,7 @@ export default async function Home() {
     openAlerts(),
     prisma.setting.findUnique({ where: { key: "demoDataLoadedAt" } }),
   ]);
+  const meter = await savingsSummary();
   const latestBrief = await prisma.brief.findFirst({ orderBy: { date: "desc" }, select: { date: true, summary: true } });
   const newEvents = await prisma.event.findMany({
     where: { createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) }, source: { in: ["edmtrain", "ticketmaster"] } },
@@ -117,6 +118,11 @@ export default async function Home() {
 
       <h2>Today</h2>
       <AlertList alerts={alerts} />
+      {meter.suggestUpgrade && settings.dataTier === "free" && (
+        <Link href="/settings#data-tier" className="alert good" style={{ display: "block", color: "inherit" }}>
+          💸 Paid flight data would have saved {usd(meter.wouldHaveSaved)} this month, more than its {usd(meter.paidTierCost)} cost. Consider upgrading.
+        </Link>
+      )}
       {newEvents.length > 0 && (
         <Link href="/events?show=new" className="alert" style={{ display: "block", color: "inherit" }}>
           🆕 {newEvents.length} new event{newEvents.length > 1 ? "s" : ""} this week
