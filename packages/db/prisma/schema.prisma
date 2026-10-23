@@ -111,6 +111,7 @@ model Trip {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
   lineItems    LineItem[]
+  guide        ArrivalGuide?
 
   @@map("trips")
 }
@@ -381,4 +382,19 @@ model PushSubscription {
   lastOkAt  DateTime? @map("last_ok_at")
 
   @@map("push_subscriptions")
+}
+
+// Arrival guide per trip (spec §10): real places from OpenStreetMap / Google Places, refreshed weekly.
+model ArrivalGuide {
+  id          String    @id @default(cuid())
+  tripId      String    @unique @map("trip_id")
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  content     Json?
+  places      Json?
+  status      String    @default("requested") // requested | ok | error
+  error       String?
+  generatedAt DateTime? @map("generated_at")
+  requestedAt DateTime? @map("requested_at")
+
+  @@map("arrival_guides")
 }

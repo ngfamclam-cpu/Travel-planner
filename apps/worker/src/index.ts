@@ -1,7 +1,7 @@
 // Rave Run worker: scheduled scrapes and price snapshots. All schedules in America/New_York (spec §4).
 import cron from "node-cron";
 import { prisma } from "@rave-run/db";
-import { fetchEdmtrainFestivals, fetchTicketmasterFestivals, findEventPage, flightProviders, hotelProvider, ticketCheckers } from "@rave-run/providers";
+import { fetchEdmtrainFestivals, fetchTicketmasterFestivals, findEventPage, flightProviders, geocode, googlePlaces, hotelProvider, osmPlaces, ticketCheckers } from "@rave-run/providers";
 import { pgQueryCache } from "./cache";
 import { runFlightJob } from "./jobs/flights";
 import { runHotelJob } from "./jobs/hotels";
@@ -11,6 +11,8 @@ import { runDiscovery } from "./jobs/discovery";
 import { runSignals } from "./jobs/signals";
 import { briefIfDue, runBrief, type BriefDeps } from "./jobs/brief";
 import { writeSummary } from "./brief/summary";
+import { runGuides, type GuideDeps } from "./jobs/guides";
+import { claudeGuideWriter } from "./guides/claude";
 import { JobRunner, settingsLastRunStore } from "./scheduler";
 
 const TZ = "America/New_York";
@@ -105,6 +107,39 @@ function briefDeps(): BriefDeps {
   };
 }
 
+function guideDeps(): GuideDeps {
+  const env = process.env;
+  const gKey = env.GOOGLE_PLACES_API_KEY;
+  return {
+    geocode: (q) => geocode(q),
+    places: gKey ? (lat, lng) => googlePlaces(gKey, lat, lng) : (lat, lng) => osmPlaces(lat, lng),
+    placesSource: gKey ? "Google Places" : "OpenStreetMap",
+    writer: claudeGuideWriter({ apiKey: env.ANTHROPIC_API_KEY, model: env.BRIEF_MODEL }),
+    pauseMs: 2000, // OpenStreetMap's usage policy: go easy
+  };
+}
+
+async function guides() {
+  try {
+    await runGuides(prisma, guideDeps());
+  } catch (e) {
+    console.error("Guides crashed:", e);
+  }
+}
+
+let guideRequestsRunning = false;
+async function guideRequests() {
+  if (guideRequestsRunning) return;
+  guideRequestsRunning = true;
+  try {
+    await runGuides(prisma, guideDeps(), { onlyRequested: true, log: () => {} });
+  } catch (e) {
+    console.error("Guide requests crashed:", e);
+  } finally {
+    guideRequestsRunning = false;
+  }
+}
+
 let briefRunning = false;
 async function brief() {
   if (briefRunning) return;
@@ -127,6 +162,7 @@ async function main() {
       // After the price jobs, so signals see today's prices.
       { name: "signals", run: signals },
       { name: "discovery", run: discovery, catchUpHours: 24 * 7 },
+      { name: "guides", run: guides, catchUpHours: 24 * 7 },
       { name: "prune", run: prune },
     ],
     settingsLastRunStore(prisma),
@@ -149,6 +185,9 @@ async function main() {
   cron.schedule("50 6 * * *", () => runner.scheduled("signals"), { timezone: TZ });
   // Every 5 minutes: build today's brief once it's past your brief time (catches up after downtime).
   cron.schedule("*/5 * * * *", brief, { timezone: TZ });
+  // Guides: weekly refresh (Sundays), plus "Build guide now" requests from the trip page every 5 minutes.
+  cron.schedule("15 4 * * 0", () => runner.scheduled("guides"), { timezone: TZ });
+  cron.schedule("*/5 * * * *", guideRequests, { timezone: TZ });
   cron.schedule("30 3 * * *", () => runner.scheduled("prune"), { timezone: TZ });
   cron.schedule("45 6 * * 1", () => runner.scheduled("discovery"), { timezone: TZ }); // Mondays
   // Missed runs (computer off or asleep): check on startup and every hour.

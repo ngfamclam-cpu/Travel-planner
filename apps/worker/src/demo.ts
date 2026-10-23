@@ -10,6 +10,7 @@ import { runTicketJob } from "./jobs/tickets";
 import { runDiscovery } from "./jobs/discovery";
 import { runSignals } from "./jobs/signals";
 import { runBrief } from "./jobs/brief";
+import { runGuides } from "./jobs/guides";
 
 const dow = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 1000, 7);
@@ -125,6 +126,17 @@ async function main() {
     const w = await prisma.ticketWatch.findFirst({ where: { eventId: club.id, platform: "radiate" } });
     if (w) await recordTicketPrice(prisma, w, { listed: 80, feesIncluded: true, source: "manual", tierLabel: "GA", note: "DEMO: seller has 3 vouches" });
   }
+  // Arrival guides for planned trips from fake DEMO places (plain guides: no map lookups, no Claude).
+  const demoPlaces = (lat: number, lng: number) =>
+    Promise.resolve([
+      { id: "demo:1", name: "DEMO Cuban Café", kind: "food" as const, cuisine: "cuban", rating: 4.6, ratingCount: 2400, lat, lng },
+      { id: "demo:2", name: "DEMO Late Night Tacos", kind: "food" as const, cuisine: "mexican", lateNight: true, rating: 4.4, ratingCount: 900, lat, lng },
+      { id: "demo:3", name: "DEMO Noodle Bar", kind: "food" as const, cuisine: "ramen", rating: 4.5, ratingCount: 1500, lat, lng },
+      { id: "demo:4", name: "DEMO Seafood Shack", kind: "food" as const, cuisine: "seafood", rating: 4.3, ratingCount: 700, lat, lng },
+      { id: "demo:5", name: "DEMO Art Museum", kind: "sight" as const, rating: 4.7, ratingCount: 9000, lat, lng },
+      { id: "demo:6", name: "DEMO Waterfront Park", kind: "park" as const, rating: 4.6, ratingCount: 5000, lat, lng },
+    ]);
+  await runGuides(prisma, { geocode: async () => ({ lat: 0, lng: 0, label: "DEMO location" }), places: demoPlaces, placesSource: "DEMO places (fake)", writer: null }, { log: () => {} });
   // Today's brief from the demo data (plain summary: no Claude call, nothing emailed or pushed).
   await prisma.setting.upsert({ where: { key: "briefChannels" }, create: { key: "briefChannels", value: { push: false, email: false } }, update: {} });
   await runBrief(prisma, {}, { force: true, log: () => {} });

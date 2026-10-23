@@ -8,6 +8,9 @@ import { InsightChip, PriceTag, Provenance, SignalChip, SignalReason } from "@/c
 import { Sparkline } from "@/components/Sparkline";
 import { DateCards } from "@/components/DateCards";
 import { TicketTracker } from "@/components/TicketTracker";
+import { ArrivalGuide, type GuideRow } from "@/components/ArrivalGuide";
+import { prisma } from "@rave-run/db";
+import type { ArrivalGuideContent } from "@rave-run/core";
 import { eventTickets, getCards, getSettings, getTrip, openAlerts, tripDateCards, type LineItemView, type TripView } from "@/lib/data";
 import { fmtDay, fmtRange, fmtWhen, usd } from "@/lib/format";
 
@@ -222,6 +225,10 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   const [t, cards, settings, alerts, dateCards] = await Promise.all([getTrip(id), getCards(), getSettings(), openAlerts(id), tripDateCards(id, tier)]);
   if (!t) notFound();
   const tickets = t.event ? await eventTickets(t.event.id) : null;
+  const guideRow = await prisma.arrivalGuide.findUnique({ where: { tripId: t.id } });
+  const guide: GuideRow | null = guideRow
+    ? { status: guideRow.status, error: guideRow.error, content: guideRow.content as unknown as ArrivalGuideContent | null, generatedAt: guideRow.generatedAt, requestedAt: guideRow.requestedAt }
+    : null;
 
   return (
     <>
@@ -308,10 +315,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
         </section>
       )}
 
-      <section className="card">
-        <h2 style={{ marginTop: 0 }}>Arrival guide</h2>
-        <p className="muted">Food, things to do and getting to the venue arrive in build step 9.</p>
-      </section>
+      <ArrivalGuide tripId={t.id} guide={guide} eligible={t.status === "planned" || t.status === "booked"} />
 
       <details className="card">
         <summary><strong>Trip details</strong></summary>

@@ -14,7 +14,7 @@ Prices, quotas and signup flows change, so check each provider's page as you sig
 | 5 | `TICKETMASTER_API_KEY` | Ticket tracker: face value + on-sale status | Free |
 | 6 | `EDMTRAIN_API_KEY` | EDM festival calendar (step 5) | Free, on request |
 | 7 | `SEATGEEK_CLIENT_ID` | Ticket tracker: SeatGeek lowest price | Free, if approved |
-| 8 | `GOOGLE_PLACES_API_KEY` | Real restaurant/place names in arrival guides (step 9) | Free monthly credit, card required |
+| 8 | `GOOGLE_PLACES_API_KEY` | Better place data (ratings) for arrival guides; without it, guides use OpenStreetMap for free | Free monthly credit, card required |
 
 ---
 
@@ -80,7 +80,9 @@ Put the two values in `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, restart, then 
 1. **https://seatgeek.com/account/develop** → **Create an app** → copy the **Client ID** → `SEATGEEK_CLIENT_ID=…`
 2. SeatGeek has restricted new API access at times. If you can't get a key, skip it. Resale floors will then come from Ticketmaster and manual entry.
 
-## 8. Google Places (arrival guides)
+## 8. Google Places (optional: arrival guides)
+
+Arrival guides already work without this: they use OpenStreetMap, which is free and needs no key. Google adds ratings and better coverage.
 
 1. **https://console.cloud.google.com** → create a project → enable **Places API (New)**.
 2. A billing account (card) is required, but Google gives a monthly free credit that one person's usage won't exceed.

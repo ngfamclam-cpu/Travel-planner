@@ -579,3 +579,13 @@ export async function saveCard(f: FormData) {
   revalidatePath("/settings");
   refresh();
 }
+
+// ---------- arrival guides ----------
+
+/** Ask the worker to (re)build this trip's guide; it picks requests up within ~5 minutes. */
+export async function requestGuide(f: FormData) {
+  const tripId = str(f, "tripId");
+  const now = new Date();
+  await prisma.arrivalGuide.upsert({ where: { tripId }, create: { tripId, status: "requested", requestedAt: now }, update: { requestedAt: now } });
+  refresh(tripId);
+}

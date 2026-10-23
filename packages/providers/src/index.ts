@@ -12,3 +12,5 @@ export * from "./tickets/finder";
 export * from "./flights/fastflights";
 export * from "./events/edmtrain";
 export * from "./events/ticketmaster";
+export * from "./places/osm";
+export * from "./places/google";
