@@ -2,6 +2,7 @@ import Link from "next/link";
 import { setupChecklist } from "@rave-run/core";
 import { prisma } from "@rave-run/db";
 import { AlertList } from "@/components/AlertList";
+import { PlanButton } from "@/components/Toggles";
 import { getSettings, listTrips, openAlerts, providerHealth, type TripView } from "@/lib/data";
 import { fmtRange, usd } from "@/lib/format";
 import { keyStatus } from "@/lib/keys";
@@ -11,25 +12,31 @@ export const dynamic = "force-dynamic";
 function TripBar({ t, max }: { t: TripView; max: number }) {
   const pct = (n: number) => `${max > 0 ? (n / max) * 100 : 0}%`;
   return (
-    <Link href={`/trips/${t.id}`} className="card stripe" style={{ display: "block", color: "inherit", ["--stripe" as string]: t.color }}>
-      <div className="spread">
-        <strong>{t.name}</strong>
-        <span className="big num" style={{ fontSize: "1.25rem" }}>{usd(t.totals.total)}</span>
+    <div className="card stripe" style={{ ["--stripe" as string]: t.color }}>
+      <Link href={`/trips/${t.id}`} style={{ display: "block", color: "inherit" }}>
+        <div className="spread">
+          <strong>{t.name}</strong>
+          <span className="big num" style={{ fontSize: "1.25rem" }}>{usd(t.totals.total)}</span>
+        </div>
+        <div className="spread" style={{ marginBottom: 8 }}>
+          <small>{fmtRange(t.arrive, t.depart)} · {t.nights} nights</small>
+          <span className="row">
+            {(t.status === "booked" || t.status === "done") && <span className={`chip ${t.status === "booked" ? "good" : ""}`}>{t.status}</span>}
+            {t.totals.unpricedCount > 0 && <span className="chip">{t.totals.unpricedCount} not priced</span>}
+            {t.totals.excludedCount > 0 && <span className="chip">{t.totals.excludedCount} not counted</span>}
+            {t.clashes.length > 0 && <span className="chip bad">clash</span>}
+          </span>
+        </div>
+        <div className="bar" title="booked / quoted / estimated">
+          <span style={{ width: pct(t.totals.booked), background: "var(--good)" }} />
+          <span style={{ width: pct(t.totals.quoted), background: "var(--info)" }} />
+          <span style={{ width: pct(t.totals.estimated), background: "var(--warn)", opacity: 0.7 }} />
+        </div>
+      </Link>
+      <div style={{ marginTop: 8 }}>
+        <PlanButton id={t.id} status={t.status} compact />
       </div>
-      <div className="spread" style={{ marginBottom: 8 }}>
-        <small>{fmtRange(t.arrive, t.depart)} · {t.nights} nights</small>
-        <span className="row">
-          <span className={`chip ${t.status === "booked" ? "good" : t.status === "planned" ? "accent" : ""}`}>{t.status}</span>
-          {t.totals.unpricedCount > 0 && <span className="chip">{t.totals.unpricedCount} not priced</span>}
-          {t.clashes.length > 0 && <span className="chip bad">clash</span>}
-        </span>
-      </div>
-      <div className="bar" title="booked / quoted / estimated">
-        <span style={{ width: pct(t.totals.booked), background: "var(--good)" }} />
-        <span style={{ width: pct(t.totals.quoted), background: "var(--info)" }} />
-        <span style={{ width: pct(t.totals.estimated), background: "var(--warn)", opacity: 0.7 }} />
-      </div>
-    </Link>
+    </div>
   );
 }
 

@@ -7,6 +7,8 @@ export interface LineItemAmounts {
   quotedAmount: number | null;
   bookedAmount: number | null;
   qty: number;
+  /** false = left out of totals (shown, not counted). Defaults to included. */
+  included?: boolean;
 }
 
 export function bestAmount(li: LineItemAmounts): { unit: number | null; state: PriceState } {
@@ -27,12 +29,20 @@ export interface TripTotals {
   quoted: number;
   estimated: number;
   unpricedCount: number;
+  /** Priced items switched off by the user (not in total). */
+  excluded: number;
+  excludedCount: number;
 }
 
 export function tripTotals(items: LineItemAmounts[]): TripTotals {
-  const t: TripTotals = { total: 0, booked: 0, quoted: 0, estimated: 0, unpricedCount: 0 };
+  const t: TripTotals = { total: 0, booked: 0, quoted: 0, estimated: 0, unpricedCount: 0, excluded: 0, excludedCount: 0 };
   for (const li of items) {
     const { unit, state } = bestAmount(li);
+    if (li.included === false) {
+      t.excludedCount++;
+      if (unit != null) t.excluded += unit * li.qty;
+      continue;
+    }
     if (unit == null) {
       t.unpricedCount++;
       continue;
@@ -47,6 +57,7 @@ export function tripTotals(items: LineItemAmounts[]): TripTotals {
   t.booked = round2(t.booked);
   t.quoted = round2(t.quoted);
   t.estimated = round2(t.estimated);
+  t.excluded = round2(t.excluded);
   return t;
 }
 

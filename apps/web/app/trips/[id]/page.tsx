@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { HOTEL_TIER_LABEL, flightDestinationCity, googleFlightsUrl, googleHotelsUrl, surgeSentence } from "@rave-run/core";
 import { addLineItem, deleteLineItem, deleteTrip, pinHotel, trackTickets, updateLineItem, updateTrip } from "@/app/actions";
 import { AlertList } from "@/components/AlertList";
+import { IncludeSwitch, PlanButton } from "@/components/Toggles";
 import { InsightChip, PriceTag, Provenance } from "@/components/PriceTag";
 import { Sparkline } from "@/components/Sparkline";
 import { DateCards } from "@/components/DateCards";
@@ -90,10 +91,13 @@ function HotelDetails({ li }: { li: LineItemView }) {
 function LineItem({ t, li, cards, homeCity }: { t: TripView; li: LineItemView; cards: { id: string; name: string }[]; homeCity: string }) {
   const link = deepLink(t, li, homeCity);
   return (
-    <div className="li">
+    <div className={`li ${li.included ? "" : "excluded"}`}>
       <div className="li-head">
         <div style={{ flex: "1 1 220px" }}>
-          <div className="kind">{li.kind}</div>
+          <div className="spread">
+            <div className="kind">{li.kind}</div>
+            <IncludeSwitch id={li.id} included={li.included} />
+          </div>
           <strong>{li.label}</strong>
           <div className="row" style={{ marginTop: 6 }}>
             <InsightChip label={li.insightLabel} />
@@ -205,10 +209,14 @@ export default async function TripPage({ params, searchParams }: { params: Promi
           <div className="li-price">
             <div className="big num">{usd(t.totals.total)}</div>
             {t.totals.unpricedCount > 0 && <small>+ {t.totals.unpricedCount} item{t.totals.unpricedCount > 1 ? "s" : ""} not priced</small>}
+            {t.totals.excludedCount > 0 && (
+              <div><small>{usd(t.totals.excluded)} not counted ({t.totals.excludedCount} switched off)</small></div>
+            )}
           </div>
         </div>
         <div className="row">
-          <span className={`chip ${t.status === "booked" ? "good" : t.status === "planned" ? "accent" : ""}`}>{t.status}</span>
+          <PlanButton id={t.id} status={t.status} />
+          {(t.status === "booked" || t.status === "done") && <span className={`chip ${t.status === "booked" ? "good" : ""}`}>{t.status}</span>}
           <span className="chip">{fmtRange(t.arrive, t.depart)}</span>
           <span className="chip">{t.nights} nights · ±{t.flexDays}d flex</span>
         </div>
@@ -240,6 +248,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
           <h2 style={{ marginTop: 0 }}>Line items</h2>
           <small className="num">
             booked {usd(t.totals.booked)} · quoted {usd(t.totals.quoted)} · est {usd(t.totals.estimated)}
+            {t.totals.excludedCount > 0 && <> · not counted {usd(t.totals.excluded)}</>}
           </small>
         </div>
         {t.items.map((li) => <LineItem key={li.id} t={t} li={li} cards={cards} homeCity={settings.homeCity} />)}

@@ -64,6 +64,7 @@ export async function runFlightJob(prisma: PrismaClient, provider: FlightProvide
     where: {
       kind: "flight",
       bookedAmount: null,
+      included: true, // switched-off flights aren't searched (no wasted quota)
       trip: { status: { in: ["considering", "planned"] }, arriveDate: { gte: new Date(`${today}T00:00:00Z`) } },
     },
     include: { trip: { include: { event: true } } },

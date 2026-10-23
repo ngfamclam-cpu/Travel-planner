@@ -122,6 +122,13 @@ export async function updateLineItem(f: FormData) {
   refresh(li.tripId);
 }
 
+/** Switch an expense on or off: off = still shown, left out of every total. */
+export async function toggleLineItemIncluded(f: FormData) {
+  const li = await prisma.lineItem.findUniqueOrThrow({ where: { id: str(f, "id") } });
+  await prisma.lineItem.update({ where: { id: li.id }, data: { included: !li.included } });
+  refresh(li.tripId);
+}
+
 export async function addLineItem(f: FormData) {
   const tripId = str(f, "tripId");
   const kind = str(f, "kind") as LineItemKind;
@@ -223,6 +230,24 @@ export async function deleteTrip(f: FormData) {
   await prisma.trip.delete({ where: { id: str(f, "id") } });
   refresh();
   redirect("/");
+}
+
+/** Plan / unplan a trip from Home, Compare or the trip page (booked and done trips use Trip details). */
+export async function setTripPlanned(f: FormData) {
+  const id = str(f, "id");
+  const planned = str(f, "planned") === "1";
+  const trip = await prisma.trip.findUniqueOrThrow({ where: { id } });
+  if (trip.status === "booked" || trip.status === "done") throw new Error("Change booked or finished trips in Trip details");
+  await prisma.trip.update({ where: { id }, data: { status: planned ? "planned" : "considering" } });
+  // Unplanning the chosen NYE / Asia option reopens that choice.
+  if (!planned) {
+    for (const key of ["nyeChoice", "asiaDestination"] as const) {
+      const row = await prisma.setting.findUnique({ where: { key } });
+      const isThis = key === "nyeChoice" ? row?.value === id : trip.slot?.startsWith("Asia");
+      if (row && isThis) await prisma.setting.update({ where: { key }, data: { value: "undecided" } });
+    }
+  }
+  refresh(id);
 }
 
 /** Pick one option in a compare slot: it becomes planned, the rest go back to considering. */

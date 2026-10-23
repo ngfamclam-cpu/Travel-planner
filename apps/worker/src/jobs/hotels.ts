@@ -66,6 +66,7 @@ export async function runHotelJob(prisma: PrismaClient, provider: HotelProvider,
   const items = await prisma.lineItem.findMany({
     where: {
       kind: "hotel",
+      included: true, // switched-off hotels aren't searched
       trip: { status: { in: ["considering", "planned", "booked"] }, arriveDate: { gte: day(today) } },
     },
     include: { trip: { include: { event: true, lineItems: { where: { kind: "flight" } } } } },

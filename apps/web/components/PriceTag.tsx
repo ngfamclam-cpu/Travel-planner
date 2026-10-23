@@ -18,7 +18,7 @@ export function PriceTag({ li }: { li: LineItemView }) {
       <div className="amt num">{unit == null ? "—" : usd(unit * li.qty, true)}</div>
       {li.qty > 1 && unit != null && <div className="muted num" style={{ fontSize: 12 }}>{usd(unit, true)} × {li.qty}</div>}
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 4 }}>
-        <span className={`chip ${chip.cls}`}>{chip.text}</span>
+        {li.included ? <span className={`chip ${chip.cls}`}>{chip.text}</span> : <span className="chip">not counted</span>}
         {state === "quoted" && li.quoteStale && <span className="chip bad" title="Older than 48 hours: needs a fresh check">stale</span>}
       </div>
     </div>

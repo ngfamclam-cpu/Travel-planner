@@ -127,7 +127,15 @@ describe("totals", () => {
       { estAmount: null, quotedAmount: null, bookedAmount: 215, qty: 1 },
       { estAmount: null, quotedAmount: null, bookedAmount: null, qty: 1 },
     ]);
-    expect(t).toEqual({ total: 2042, booked: 215, quoted: 427, estimated: 1400, unpricedCount: 1 });
+    expect(t).toEqual({ total: 2042, booked: 215, quoted: 427, estimated: 1400, unpricedCount: 1, excluded: 0, excludedCount: 0 });
+  });
+  it("leaves switched-off items out of the total but reports them", () => {
+    const t = tripTotals([
+      { estAmount: 400, quotedAmount: null, bookedAmount: null, qty: 1 },
+      { estAmount: 140, quotedAmount: null, bookedAmount: null, qty: 1, included: false },
+      { estAmount: null, quotedAmount: null, bookedAmount: null, qty: 1, included: false },
+    ]);
+    expect(t).toMatchObject({ total: 400, excluded: 140, excludedCount: 2, unpricedCount: 0 });
   });
 });
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { bestAmount, lineTotal } from "@rave-run/core";
-import { chooseOption } from "@/app/actions";
+import { chooseOption, setTripPlanned } from "@/app/actions";
 import { listTrips, type TripView } from "@/lib/data";
 import { fmtRange, usd } from "@/lib/format";
 
@@ -9,8 +9,10 @@ export const dynamic = "force-dynamic";
 const KINDS = ["ticket", "flight", "hotel", "ground", "food", "other"] as const;
 
 function Cell({ t, kind }: { t: TripView; kind: string }) {
-  const items = t.items.filter((i) => i.kind === kind);
-  if (!items.length) return <span className="muted">—</span>;
+  const all = t.items.filter((i) => i.kind === kind);
+  if (!all.length) return <span className="muted">—</span>;
+  const items = all.filter((i) => i.included);
+  if (!items.length) return <span className="muted">not counted</span>;
   const priced = items.filter((i) => lineTotal(i) != null);
   const sum = priced.reduce((s, i) => s + (lineTotal(i) ?? 0), 0);
   const states = new Set(items.map((i) => bestAmount(i).state));
@@ -47,6 +49,7 @@ export default async function Compare() {
                   <div className="spread">
                     <Link href={`/trips/${t.id}`}><strong>{t.name}</strong></Link>
                     {t.status === "planned" && <span className="chip accent">chosen</span>}
+                    {t.status === "booked" && <span className="chip good">booked</span>}
                   </div>
                   <small>
                     {t.event ? `${t.event.city} · ` : ""}{fmtRange(t.arrive, t.depart)}
@@ -66,10 +69,17 @@ export default async function Compare() {
                     {t.traps.map((tr) => <span key={tr.id} className="chip warn">{tr.name}</span>)}
                     {t.clashes.map((c) => <span key={c.otherId} className={`chip ${c.kind === "overlap" ? "bad" : "warn"}`}>{c.message}</span>)}
                   </div>
-                  {t.status !== "planned" && t.status !== "booked" && (
+                  {t.status === "considering" && (
                     <form action={chooseOption} style={{ marginTop: 10 }}>
                       <input type="hidden" name="id" value={t.id} />
                       <button type="submit" className="ghost">Choose this one</button>
+                    </form>
+                  )}
+                  {t.status === "planned" && (
+                    <form action={setTripPlanned} style={{ marginTop: 10 }}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="planned" value="0" />
+                      <button type="submit" className="ghost">Unchoose</button>
                     </form>
                   )}
                 </div>

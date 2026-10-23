@@ -81,6 +81,8 @@ export interface LineItemView {
   kind: string;
   label: string;
   qty: number;
+  /** false = switched off: shown, not counted. */
+  included: boolean;
   estAmount: number | null;
   quotedAmount: number | null;
   bookedAmount: number | null;
@@ -166,6 +168,7 @@ function toView(t: TripRow, all: TripLike[]): TripView {
       kind: li.kind,
       label: li.label,
       qty: li.qty,
+      included: li.included,
       estAmount: num(li.estAmount),
       quotedAmount: quoted,
       bookedAmount: num(li.bookedAmount),
@@ -307,8 +310,10 @@ export async function tripDateCards(tripId: string, requestedTier?: string): Pro
   const chosenOpt = (trip.chosenOption ?? {}) as ChosenOption;
   const chosen = { arrive: toISODate(trip.arriveDate), depart: toISODate(trip.departDate) };
   const anchor = chosenOpt.anchor ?? chosen;
-  const flightItem = trip.lineItems.find((l) => l.kind === "flight" && (l.searchSpec as FlightSearchSpec | null)?.destinations?.length);
-  const hotelItem = trip.lineItems.find((l) => l.kind === "hotel");
+  // Switched-off items don't count anywhere, including the date cards.
+  const counted = trip.lineItems.filter((l) => l.included);
+  const flightItem = counted.find((l) => l.kind === "flight" && (l.searchSpec as FlightSearchSpec | null)?.destinations?.length);
+  const hotelItem = counted.find((l) => l.kind === "hotel");
   const hotelSpec = (hotelItem?.searchSpec ?? {}) as HotelSearchSpec;
   const tiers: HotelTier[] = ["cheapest", "value", "rated", ...(hotelSpec.pinned ? (["pinned"] as const) : []), ...(hotelSpec.includeRentals ? (["rental"] as const) : [])];
   const tier = (tiers as string[]).includes(requestedTier ?? "") ? (requestedTier as HotelTier) : chosenOpt.hotelTier && tiers.includes(chosenOpt.hotelTier) ? chosenOpt.hotelTier : "cheapest";
@@ -365,12 +370,14 @@ export async function tripDateCards(tripId: string, requestedTier?: string): Pro
       source: TICKET_PLATFORMS[q.platform].name,
     })),
   ]);
-  const ticketItems = trip.lineItems.filter((l) => l.kind === "ticket");
-  if (!ticket) {
+  const ticketItems = counted.filter((l) => l.kind === "ticket");
+  // Every ticket line switched off: leave tickets out of the cards entirely.
+  if (!ticketItems.length && trip.lineItems.some((l) => l.kind === "ticket")) ticket = null;
+  else if (!ticket) {
     const sum = ticketItems.reduce((a, l) => a + (lineTotal({ estAmount: num(l.estAmount), quotedAmount: num(l.quotedAmount), bookedAmount: num(l.bookedAmount), qty: l.qty }) ?? 0), 0);
     if (sum > 0) ticket = { label: ticketItems.map((l) => l.label).join(" + "), price: sum, source: "line item", resale: false, others: [] };
   }
-  const fixedCosts = trip.lineItems
+  const fixedCosts = counted
     .filter((l) => !["flight", "hotel", "ticket"].includes(l.kind))
     .reduce((a, l) => a + (lineTotal({ estAmount: num(l.estAmount), quotedAmount: num(l.quotedAmount), bookedAmount: num(l.bookedAmount), qty: l.qty }) ?? 0), 0);
 

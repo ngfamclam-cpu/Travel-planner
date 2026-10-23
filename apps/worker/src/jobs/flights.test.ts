@@ -99,6 +99,15 @@ describe.skipIf(!url)("flight job", () => {
     ]);
   });
 
+  it("skips flights that are switched off", async () => {
+    await prisma.lineItem.updateMany({ where: { kind: "flight" }, data: { included: false } });
+    const fake = new FakeFlights();
+    const r = await runFlightJob(prisma, fake, { budget: 50, now: new Date("2026-10-30T12:00:00Z"), log: () => {} });
+    expect(fake.queries).toHaveLength(0);
+    expect(r.planned).toBe(0);
+    await prisma.lineItem.updateMany({ where: { kind: "flight" }, data: { included: true } });
+  });
+
   it("records a failed run when not configured", async () => {
     const off: FlightProvider = { info: { name: "none", tier: "free", configured: false, envKeys: ["SERPAPI_KEY"] }, search: async () => ({ ok: false, provider: "none", error: "x" }) };
     const r = await runFlightJob(prisma, off, { log: () => {} });

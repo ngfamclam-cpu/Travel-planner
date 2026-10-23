@@ -122,6 +122,8 @@ model LineItem {
   quotedAmount  Decimal?        @map("quoted_amount") @db.Decimal(10, 2)
   bookedAmount  Decimal?        @map("booked_amount") @db.Decimal(10, 2)
   qty           Int             @default(1)
+  /** Off = shown on the trip but left out of every total and the date cards. */
+  included      Boolean         @default(true)
   isEstimate    Boolean         @default(true) @map("is_estimate")
   // Provenance for the quoted amount (spec §14: every price shows source + time).
   quotedSource  String?         @map("quoted_source")
