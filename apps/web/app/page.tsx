@@ -52,6 +52,7 @@ export default async function Home() {
     openAlerts(),
     prisma.setting.findUnique({ where: { key: "demoDataLoadedAt" } }),
   ]);
+  const latestBrief = await prisma.brief.findFirst({ orderBy: { date: "desc" }, select: { date: true, summary: true } });
   const newEvents = await prisma.event.findMany({
     where: { createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) }, source: { in: ["edmtrain", "ticketmaster"] } },
     orderBy: { startDate: "asc" },
@@ -106,6 +107,13 @@ export default async function Home() {
           <span className="chip warn">estimate</span>
         </div>
       </section>
+
+      {latestBrief && (
+        <Link href="/brief" className="card" style={{ display: "block", color: "inherit" }}>
+          <small>📰 Brief · {latestBrief.date.toISOString().slice(0, 10)}</small>
+          <div style={{ marginTop: 4 }}>{latestBrief.summary}</div>
+        </Link>
+      )}
 
       <h2>Today</h2>
       <AlertList alerts={alerts} />

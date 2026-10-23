@@ -253,6 +253,9 @@ model Brief {
   html       String
   text       String
   payload    Json?
+  summary    String?
+  /** "claude" or "template" (Claude not configured, refused, or used a number not in the payload). */
+  summarySource String? @map("summary_source")
   sentPush   Boolean  @default(false) @map("sent_push")
   sentEmail  Boolean  @default(false) @map("sent_email")
   createdAt  DateTime @default(now()) @map("created_at")
@@ -366,4 +369,16 @@ model TicketPrice {
 
   @@index([eventId, observedAt])
   @@map("ticket_prices")
+}
+
+// Web push endpoints for the daily brief (one per device/browser).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  keys      Json // { p256dh, auth }
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  lastOkAt  DateTime? @map("last_ok_at")
+
+  @@map("push_subscriptions")
 }

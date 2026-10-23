@@ -19,7 +19,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p packages/core && tsc -p packages/providers && tsc -p apps/worker && tsc -p apps/web --noEmit",
     "db:reset": "npm run seed -w @rave-run/db -- --reset",
-    "demo": "npm run demo -w @rave-run/worker"
+    "demo": "npm run demo -w @rave-run/worker",
+    "brief": "npm run brief -w @rave-run/worker"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

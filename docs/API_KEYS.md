@@ -43,7 +43,7 @@ Flights work without this key. SerpApi gives you real hotel prices, finds ticket
 2. **API Keys** → **Create Key** → `ANTHROPIC_API_KEY=sk-ant-…`
 3. Optional: set a monthly spend limit under **Limits**.
 
-Claude only writes the words. Every number in the brief comes from the database.
+Claude (Opus 5.5, low effort) only writes the brief's opening paragraph. Every number it uses is checked against the day's data, and if it uses one that isn't there, the brief uses a plain summary instead. The rest of the brief is built straight from the database. Without a key you still get the full brief, just with the plain summary. Expect a few cents a day.
 
 ## 3. Resend (email)
 
@@ -54,13 +54,14 @@ Claude only writes the words. Every number in the brief comes from the database.
 
 ## 4. VAPID keys (web push): no signup
 
-Run once, anywhere with Node:
+Run once, with the app running:
 
 ```sh
-npx web-push generate-vapid-keys
+docker compose exec worker npx web-push generate-vapid-keys
+# (local Windows setup: docker compose -f docker-compose.local.yml exec worker npx web-push generate-vapid-keys)
 ```
 
-Put the two values in `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. On Android, open the app in Chrome → menu → **Install app**, then allow notifications when asked.
+Put the two values in `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, restart, then open **Settings → Daily brief → Turn on notifications on this device** on each phone or computer. Notifications need the app's **https** address: on the droplet that's automatic, and at home you can use `tailscale serve` for an https address on your tailnet. On Android, open the app in Chrome → menu → **Install app**, then allow notifications when asked.
 
 ## 5. Ticketmaster Discovery API
 

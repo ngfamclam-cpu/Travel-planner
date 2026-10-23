@@ -15,3 +15,4 @@ export * from "./discovery";
 export * from "./signals";
 export * from "./signals.config";
 export * from "./points";
+export * from "./brief";

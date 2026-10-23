@@ -6,15 +6,19 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "once": "tsx src/index.ts --once",
-    "demo": "tsx src/demo.ts --yes"
+    "demo": "tsx src/demo.ts --yes",
+    "brief": "tsx src/index.ts --brief"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.1.0",
     "@rave-run/core": "*",
     "@rave-run/db": "*",
     "@rave-run/providers": "*",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@types/node-cron": "^3.0.11"
+    "@types/node-cron": "^3.0.11",
+    "@types/web-push": "^3.6.4"
   }
 }

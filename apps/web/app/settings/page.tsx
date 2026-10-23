@@ -1,5 +1,6 @@
 import { prisma } from "@rave-run/db";
 import { TICKET_PLATFORMS } from "@rave-run/core";
+import { PushToggle } from "@/components/PushToggle";
 import { resetAirports, saveCard, savePoints, saveSettings, saveTicketSettings } from "@/app/actions";
 import { getCards, getPoints, getSettings } from "@/lib/data";
 
@@ -119,7 +120,12 @@ export default async function Settings() {
             <div><label>SerpApi searches / month</label><input name="serpapiMonthlyQuota" type="number" defaultValue={s.serpapiMonthlyQuota} /></div>
             <div><label>Free flight source: requests / day</label><input name="freeFlightDailyRequests" type="number" min={0} defaultValue={s.freeFlightDailyRequests} /></div>
           </div>
-          <p className="muted"><small>The free flight source makes one Google Flights request per airport pair, spaced several seconds apart. Keep it modest (≈100–150/day) so Google doesn't block your server. Data tier: {s.dataTier}. The brief (step 8) and the savings meter (step 10) aren't built yet.</small></p>
+          <div style={{ marginTop: 10 }}>
+            <label>Notifications on this device</label>
+            <PushToggle publicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
+          </div>
+          <p className="muted"><small>Email goes to BRIEF_EMAIL_TO (needs RESEND_API_KEY). See the latest brief on the <a href="/brief">Brief page</a>.</small></p>
+          <p className="muted"><small>The free flight source makes one Google Flights request per airport pair, spaced several seconds apart. Keep it modest (≈100–150/day) so Google doesn't block your server. Data tier: {s.dataTier}. The savings meter arrives in step 10.</small></p>
         </section>
 
         <div className="row"><button type="submit">Save settings</button></div>

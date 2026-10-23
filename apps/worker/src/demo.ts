@@ -9,6 +9,7 @@ import { runHotelJob } from "./jobs/hotels";
 import { runTicketJob } from "./jobs/tickets";
 import { runDiscovery } from "./jobs/discovery";
 import { runSignals } from "./jobs/signals";
+import { runBrief } from "./jobs/brief";
 
 const dow = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 1000, 7);
@@ -124,6 +125,10 @@ async function main() {
     const w = await prisma.ticketWatch.findFirst({ where: { eventId: club.id, platform: "radiate" } });
     if (w) await recordTicketPrice(prisma, w, { listed: 80, feesIncluded: true, source: "manual", tierLabel: "GA", note: "DEMO: seller has 3 vouches" });
   }
+  // Today's brief from the demo data (plain summary: no Claude call, nothing emailed or pushed).
+  await prisma.setting.upsert({ where: { key: "briefChannels" }, create: { key: "briefChannels", value: { push: false, email: false } }, update: {} });
+  await runBrief(prisma, {}, { force: true, log: () => {} });
+  await prisma.setting.update({ where: { key: "briefChannels" }, data: { value: { push: true, email: true } } });
   await prisma.setting.upsert({ where: { key: "demoDataLoadedAt" }, create: { key: "demoDataLoadedAt", value: new Date().toISOString() }, update: { value: new Date().toISOString() } });
   const [snaps, tickets, alerts] = await Promise.all([prisma.priceSnapshot.count(), prisma.ticketPrice.count(), prisma.alert.count({ where: { dismissedAt: null } })]);
   console.log(`DEMO data loaded: ${snaps} flight/hotel prices, ${tickets} ticket prices, ${alerts} alerts. Clear with: npm run db:reset`);

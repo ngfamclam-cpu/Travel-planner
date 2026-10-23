@@ -9,6 +9,8 @@ import { runTicketJob } from "./jobs/tickets";
 import { runPrune } from "./jobs/prune";
 import { runDiscovery } from "./jobs/discovery";
 import { runSignals } from "./jobs/signals";
+import { briefIfDue, runBrief, type BriefDeps } from "./jobs/brief";
+import { writeSummary } from "./brief/summary";
 import { JobRunner, settingsLastRunStore } from "./scheduler";
 
 const TZ = "America/New_York";
@@ -93,6 +95,29 @@ async function signals() {
   }
 }
 
+function briefDeps(): BriefDeps {
+  const env = process.env;
+  return {
+    summarize: (p) => writeSummary(p, { apiKey: env.ANTHROPIC_API_KEY, model: env.BRIEF_MODEL }),
+    email: { apiKey: env.RESEND_API_KEY, to: env.BRIEF_EMAIL_TO, from: env.BRIEF_EMAIL_FROM },
+    push: { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.BRIEF_EMAIL_TO ? `mailto:${env.BRIEF_EMAIL_TO}` : undefined },
+    baseUrl: env.APP_URL ?? (env.DOMAIN ? `https://${env.DOMAIN}` : ""),
+  };
+}
+
+let briefRunning = false;
+async function brief() {
+  if (briefRunning) return;
+  briefRunning = true;
+  try {
+    await briefIfDue(prisma, briefDeps());
+  } catch (e) {
+    console.error("Brief crashed:", e);
+  } finally {
+    briefRunning = false;
+  }
+}
+
 async function main() {
   const runner = new JobRunner(
     [
@@ -106,6 +131,12 @@ async function main() {
     ],
     settingsLastRunStore(prisma),
   );
+  if (process.argv.includes("--brief")) {
+    // Build (or rebuild) today's brief now and send it: npm run brief
+    await runBrief(prisma, briefDeps(), { force: true });
+    await prisma.$disconnect();
+    return;
+  }
   if (process.argv.includes("--once")) {
     await runner.runAll();
     await prisma.$disconnect();
@@ -116,6 +147,8 @@ async function main() {
   cron.schedule(HOTEL_SCHEDULE, () => runner.scheduled("hotels"), { timezone: TZ });
   cron.schedule(TICKET_SCHEDULE, () => runner.scheduled("tickets"), { timezone: TZ });
   cron.schedule("50 6 * * *", () => runner.scheduled("signals"), { timezone: TZ });
+  // Every 5 minutes: build today's brief once it's past your brief time (catches up after downtime).
+  cron.schedule("*/5 * * * *", brief, { timezone: TZ });
   cron.schedule("30 3 * * *", () => runner.scheduled("prune"), { timezone: TZ });
   cron.schedule("45 6 * * 1", () => runner.scheduled("discovery"), { timezone: TZ }); // Mondays
   // Missed runs (computer off or asleep): check on startup and every hour.
