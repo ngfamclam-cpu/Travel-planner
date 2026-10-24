@@ -111,6 +111,18 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(r["prices"], [{"date": future(12), "return": future(19), "price": 1234.0}])
         self.assertIn("f.req=", client.post.call_args.kwargs["data"])
 
+    def test_unreadable_calendar_is_a_parse_failure(self):
+        client = mock.Mock()
+        client.post.return_value = NS(text="<html>consent</html>", raise_for_status=lambda: None)
+        with mock.patch("fli.search.dates.get_client", return_value=client):
+            self.assertEqual(app.calendar(CAL)["kind"], "parse")
+
+    def test_empty_calendar_is_ok(self):
+        fake = mock.Mock()
+        fake.search.return_value = []
+        with mock.patch.object(app, "SearchDates", return_value=fake):
+            self.assertEqual(app.calendar(CAL), {"ok": True, "prices": []})
+
     def test_blocked(self):
         fake = mock.Mock()
         fake.search.side_effect = RuntimeError("HTTP 429 Too Many Requests")

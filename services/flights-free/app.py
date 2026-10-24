@@ -212,8 +212,11 @@ def calendar(body: dict) -> dict:
         _throttle()
         try:
             _dates = _dates or SearchDates()
-            results = _dates.search(filters, currency=p["currency"]) or []
-        except (AttributeError, IndexError, KeyError, TypeError, json.JSONDecodeError) as e:
+            results = _dates.search(filters, currency=p["currency"])
+            if results is None:
+                # fli returns None when the response held no calendar at all (an empty list means no fares).
+                raise LookupError("no calendar data in Google's response")
+        except (AttributeError, IndexError, KeyError, LookupError, TypeError, json.JSONDecodeError) as e:
             log.warning("calendar parse failure: %r", e)
             return {"ok": False, "kind": "parse", "error": "Google returned a calendar fli couldn't read (blocked, consent page, or a layout change)"}
         except Exception as e:

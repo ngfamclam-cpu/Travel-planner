@@ -629,7 +629,9 @@ export async function asiaData() {
     const k = `${origin}:${city}`;
     routeFound.set(k, (routeFound.get(k) ?? 0) + s.found);
   }
-  const noNonstop = [...routeFound.entries()].filter(([, n]) => n === 0).map(([k]) => k.split(":") as [string, string]);
+  // Only trust "none found" when other routes did return fares.
+  const anyFound = [...routeFound.values()].some((n) => n > 0);
+  const noNonstop = anyFound ? [...routeFound.entries()].filter(([, n]) => n === 0).map(([k]) => k.split(":") as [string, string]) : [];
   const lastFetched = fares.reduce<Date | null>((m, f) => (!m || f.fetchedAt > m ? f.fetchedAt : m), null);
   return { rows, settings, lastRun, lastFetched, noNonstop, scanned: scans.filter((s) => s.ok).length, demo: !!demo };
 }

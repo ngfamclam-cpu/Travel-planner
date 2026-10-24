@@ -54,6 +54,16 @@ describe.skipIf(!url)("Explore Asia job", () => {
     expect(await prisma.asiaFare.count({ where: { date: { lt: new Date("2026-10-26") } } })).toBe(0);
   });
 
+  it("treats all-empty answers as a failure and retries them next run", async () => {
+    await prisma.asiaFare.deleteMany();
+    await prisma.asiaScan.deleteMany();
+    const empty = async (): Promise<CalendarResult> => ({ ok: true, prices: [] });
+    await runAsia(prisma, { calendar: empty }, { now, log: () => {} });
+    const run = await prisma.providerRun.findFirst({ where: { kind: "asia" }, orderBy: { startedAt: "desc" } });
+    expect(run).toMatchObject({ ok: false, results: 0 });
+    expect((await runAsia(prisma, { calendar: empty }, { now: new Date(now.getTime() + 3_600_000), log: () => {} })).scanned).toBe(144);
+  });
+
   it("stops after repeated failures and records the error", async () => {
     await prisma.asiaScan.deleteMany();
     let n = 0;

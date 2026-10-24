@@ -23,7 +23,9 @@ export async function runAsia(prisma: PrismaClient, deps: AsiaDeps, opts: { now?
   const series = asiaSeries(settings, today);
   const scans = await prisma.asiaScan.findMany();
   const usedToday = scans.filter((s) => now.getTime() - s.fetchedAt.getTime() < 24 * 3_600_000).length;
-  const lastScan = new Map(scans.filter((s) => s.ok).map((s) => [s.key, s.fetchedAt]));
+  // With no fares stored at all, earlier "empty" answers can't be trusted (e.g. an unreadable response): start over.
+  const haveFares = (await prisma.asiaFare.count()) > 0;
+  const lastScan = new Map(scans.filter((s) => s.ok && haveFares).map((s) => [s.key, s.fetchedAt]));
   const due = dueAsiaSeries(series, lastScan, { now, refreshDays: cfg.refreshDays, cap: Math.max(0, cfg.dailyRequests - usedToday), firstFillCap: 200 });
 
   let scanned = 0;
@@ -45,8 +47,11 @@ export async function runAsia(prisma: PrismaClient, deps: AsiaDeps, opts: { now?
     found += await saveSeries(prisma, s, res.prices, now);
   }
 
+  // Every route empty (Tokyo and Seoul have daily nonstops) means the answers were unusable, not "no flights".
+  const allEmpty = scanned >= 4 && found === 0 && !haveFares;
+  if (allEmpty) lastError = `Google answered ${scanned} calendar requests with no fares at all; the free source is probably blocked or changed. ${lastError ?? ""}`.trim();
   await prisma.providerRun.create({
-    data: { provider: "google_flights_calendar", kind: "asia", ok: scanned === 0 || failures < STOP_AFTER_FAILURES, queries: scanned, results: found, error: lastError?.slice(0, 1000) },
+    data: { provider: "google_flights_calendar", kind: "asia", ok: !allEmpty && (scanned === 0 || failures < STOP_AFTER_FAILURES), queries: scanned, results: found, error: lastError?.slice(0, 1000) },
   });
   log(`Explore Asia: ${scanned} calendar requests, ${found} fares (${due.length} due of ${series.length}).`);
   return { scanned, found, due: due.length, total: series.length };
